@@ -231,7 +231,14 @@ after setup, so a bad key is caught immediately instead of mid-ingestion.
 - **Empty text:** a patient with an empty `text` field still produces one
   chunk — a single empty-string chunk — rather than being dropped, so the
   "every patient produces ≥1 chunk" invariant (Expected statistics) holds.
-  Such a chunk simply never scores as a strong retrieval match.
+  Such a chunk simply never scores as a strong retrieval match. This path
+  is defensive only — Block 3's template always emits a full sentence even
+  for a patient with nothing to report (e.g. "Conditions: none. Drugs:
+  none."), so real data never actually hits it. Whether Pinecone's
+  integrated inference even accepts an empty string for `chunk_text` is
+  unconfirmed; Phase 3 checks this against the real index and substitutes
+  a minimal placeholder instead of the empty string if it's rejected,
+  rather than assuming it works.
 - **Fallback case:** if a single sentence is itself longer than 200
   characters (not expected here, but not guaranteed forever if the text
   template changes), it becomes its own oversized chunk rather than

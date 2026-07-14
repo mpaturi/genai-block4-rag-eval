@@ -60,6 +60,9 @@ still unmerged (stacked PR), or `main` if it already merged.
 - [ ] Re-run — confirm identical count (idempotency, verified not assumed)
 - [ ] Run one self-match query — confirm a chunk's own text returns itself
       as top match (confirms score direction empirically)
+- [ ] Test the empty-text chunk path against real Pinecone — confirm
+      accept/reject behavior for an empty `chunk_text` string; if rejected,
+      adjust `chunk_records.py`'s fallback (see spec's Chunking design)
 - [ ] Commit `scripts/chunk_records.py`, `scripts/ingest.py`,
       `tests/test_chunking.py`, `data/raw/graph_export.jsonl`
 - [ ] `git push -u origin phase-3-ingest`

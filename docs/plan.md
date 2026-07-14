@@ -138,6 +138,10 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - [ ] Create `scripts/chunk_records.py`
 - [ ] Create `tests/test_chunking.py`
 - [ ] `pytest tests/test_chunking.py` — all pass
+- [ ] During Phase 3 ingestion, test the empty-text chunk path against real
+      Pinecone — confirm whether integrated inference accepts an empty
+      `chunk_text` string; if rejected, adjust `chunk_records.py` to
+      substitute a minimal placeholder instead (see spec's Chunking design)
 - [ ] Commit: `feat(ingest): add chunking logic and unit tests`
 
 ---
