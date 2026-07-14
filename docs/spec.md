@@ -47,22 +47,29 @@ Block 1's CSVs — copy source artifacts into the repo, don't reach across
 repos at runtime).
 
 **Also copied in:** `condition_occurrence.csv`, `drug_exposure.csv`, and
-`person.csv` (the same Block 1 OMOP files Block 3 used). Reason: Block 3's
+`person.csv` (the same Block 1 OMOP files Block 3 used) — needed because
 `graph_export.jsonl` metadata only stores *counts* (`condition_count`,
-`drug_count`), not the actual condition/drug names as structured, filterable
-fields — those names only exist inside the free-text `text` field. To build
-a trustworthy eval answer key ("which patients have condition X and drug Y")
-we need to recompute that join directly from the OMOP CSVs with pandas, the
-same way Block 3's Cypher queries did — not by string-matching the `text`
-field, which would be fragile and would defeat the purpose of having an
-independent answer key.
+`drug_count`), not condition/drug names as structured, filterable fields.
+`measurement.csv` is also copied in, for a different reason — see below.
 
 Block 3 artifacts reused:
-- `graph_export.jsonl` (11,424 patient records, `text` + `metadata` fields)
+- `graph_export.jsonl` (11,436 patient records, `text` + `metadata` fields)
 - `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv` (for eval
   ground-truth computation only — never touched by the live RAG pipeline)
 - The 4 Cypher queries' *logic* (reimplemented as pandas filters against the
   CSVs, since this repo has no Neo4j connection)
+
+Block 1 artifact reused directly (not via Block 3):
+- `measurement.csv` — the four lab values are already structured in
+  `graph_export.jsonl`'s metadata, but they're Block 3's own computed
+  "latest per patient" output. Using `measurement.csv` instead means
+  lab-threshold ground truth is independently recomputed, not just
+  trusted from Block 3's pipeline — the same principle applied to
+  conditions/drugs above, just for a different reason (there, the
+  structured data is simply absent from the JSONL; here, it's present
+  but not independently sourced). Replicates Block 1's "latest value per
+  concept per patient" logic (`measurement_concept_id` mapping in Block
+  1's `src/concepts.py`).
 
 Block 3 artifacts NOT reused:
 - Neo4j itself — this repo never connects to a graph database at runtime
@@ -85,10 +92,10 @@ scripts/create_index.py       (creates the Pinecone serverless index if it
 
 Ingestion pipeline (run once, offline, before any questions are asked):
 
-data/raw/graph_export.jsonl (11,424 patient records)
+data/raw/graph_export.jsonl (11,436 patient records)
        |
        v
-scripts/chunk_records.py     (split long `text` fields into <=150-char
+scripts/chunk_records.py     (split long `text` fields into <=200-char
                                pieces on sentence boundaries; short records
                                pass through as a single chunk)
        |
@@ -151,7 +158,7 @@ Unit tests (alongside the deterministic code, not part of the eval harness):
 tests/test_chunking.py        (pytest — chunking logic is pure and
                                deterministic, no API calls, so it gets
                                normal unit tests: boundary cases, empty
-                               text, exactly-150-char text, text that must
+                               text, exactly-200-char text, text that must
                                split into 2+ pieces using synthetic
                                examples that guarantee the split path runs)
 tests/test_retrieve.py        (pytest — the score-threshold decision is
@@ -205,27 +212,27 @@ after setup, so a bad key is caught immediately instead of mid-ingestion.
 
 ## Chunking design
 
-- Rule: if a patient's `text` field is **≤ 150 characters**, it stays as a
+- Rule: if a patient's `text` field is **≤ 200 characters**, it stays as a
   single chunk. If longer, whole sentences are added to a chunk one at a
   time — keep adding the next sentence as long as the chunk still fits
-  within 150 characters, then close it and start a new chunk with that
+  within 200 characters, then close it and start a new chunk with that
   sentence. This is deliberately "group whole sentences up to the limit,"
   not "one sentence = one chunk," which could produce needlessly choppy
   single-sentence chunks even when two short sentences would comfortably
   fit together.
-- **Why 150, not a round number like 400:** this dataset only has 3 possible
-  conditions and 6 possible drugs (Block 1's whitelist), so even the
-  worst-case patient produces roughly 220–230 characters of text. A 400-
-  character threshold would mean chunking *never fires* on real data, and
-  the multi-chunk path would ship untested against the actual corpus. 150
-  is chosen so the genuinely high-burden patients (the same ones Block 3's
-  Q3 query surfaces) actually do split, giving the logic real data to run
-  against.
+- **Why 200, not the old 150 or a round number like 400:** this dataset has
+  11 conditions and 17 drugs (not the old 3-condition/6-drug estimate), and
+  real records in `data/raw/graph_export.jsonl` range 77–348 characters.
+  150 splits 28.7% of patients — too many to call "only high-burden." 400
+  splits almost none (real max is 348), repeating the same
+  untested-multi-chunk-path problem this doc originally flagged. 200 splits
+  7.8% (893 patients): most stay single-chunk, and high-burden patients
+  (Block 3's Q3 population) still get real multi-chunk coverage.
 - **Empty text:** a patient with an empty `text` field still produces one
   chunk — a single empty-string chunk — rather than being dropped, so the
   "every patient produces ≥1 chunk" invariant (Expected statistics) holds.
   Such a chunk simply never scores as a strong retrieval match.
-- **Fallback case:** if a single sentence is itself longer than 150
+- **Fallback case:** if a single sentence is itself longer than 200
   characters (not expected here, but not guaranteed forever if the text
   template changes), it becomes its own oversized chunk rather than
   crashing or silently truncating. `tests/test_chunking.py` covers this
@@ -239,22 +246,27 @@ after setup, so a bad key is caught immediately instead of mid-ingestion.
   to just from the ID.
 - Every chunk carries the parent patient's full metadata (`person_id`,
   `gender`, `year_of_birth_band`, `condition_count`, `drug_count`,
-  `visit_count`) plus a `chunk_index` field — so no matter which chunk gets
-  retrieved, we know exactly which patient and which piece of their record
-  it came from.
+  `visit_count`, `latest_sbp`, `latest_bmi`, `latest_glucose`,
+  `latest_hba1c`) plus a `chunk_index` field — so no matter which chunk
+  gets retrieved, we know exactly which patient and which piece of their
+  record it came from.
 
 Example — a short record (stays as 1 chunk):
 
 ```json
 {
   "_id": "248_chunk0",
-  "chunk_text": "Patient 248, born in the 1960s, Female. Conditions: Type 2 diabetes mellitus. Drugs: Metformin, Lisinopril. Visits: 5.",
+  "chunk_text": "Patient 248, born in the 1960s, Female. Conditions: Type 2 diabetes mellitus. Drugs: Metformin, Lisinopril. Visits: 5. Latest labs: HbA1c 7.2%, Glucose 142 mg/dL, SBP 138 mmHg, BMI 28.4.",
   "person_id": 248,
   "gender": "Female",
   "year_of_birth_band": "1960s",
   "condition_count": 1,
   "drug_count": 2,
   "visit_count": 5,
+  "latest_sbp": 138,
+  "latest_bmi": 28.4,
+  "latest_glucose": 142,
+  "latest_hba1c": 7.2,
   "chunk_index": 0
 }
 ```
@@ -314,8 +326,8 @@ time, not from a hardcoded guess baked into this doc:
 
 | Metric | Expected |
 |---|---|
-| Source patient records | 11,424 (must match Block 3's `graph_export.jsonl` record count) |
-| Pinecone vector count | ≥ 11,424 — exactly 11,424 if no patient's text exceeds 150 characters, higher if some high-burden patients split into 2+ chunks. The precise number is computed by `scripts/verify.py` re-running `chunk_records.py` against the source file and counting the output, then compared against Pinecone's actual reported vector count. |
+| Source patient records | 11,436 (must match Block 3's `graph_export.jsonl` record count) |
+| Pinecone vector count | ≥ 11,436 — higher whenever a patient's text exceeds the 200-char threshold and splits into 2+ chunks (real data: ~7.8% of patients, see Chunking design). The precise number is computed by `scripts/verify.py` re-running `chunk_records.py` against the source file and counting the output, then compared against Pinecone's actual reported vector count. |
 | Repeat-ingestion vector count | Must be identical to the first run's count (idempotency check — see Reproducibility and determinism) |
 
 ## Retrieval design (Job 1)
@@ -428,17 +440,23 @@ outage — temporarily set an invalid `PINECONE_API_KEY` or
   - demographic-filtered questions (e.g. male patients born in the 1970s
     with hypertension)
   - high-burden / visit-count questions (mirroring Block 3's Q3 and Q4)
+  - lab-threshold questions (e.g. "patients with HbA1c above 8%", "BMI over
+    30 and hypertension") — exercises the `latest_sbp`/`latest_bmi`/
+    `latest_glucose`/`latest_hba1c` fields Block 3 added
   - deliberately out-of-scope questions with no correct answer in this
-    dataset (e.g. asking about a condition outside the 3-condition
+    dataset (e.g. asking about a condition outside the 11-condition
     whitelist), which should trigger "I don't know" — these test the
     fallback path, not just the happy path. At least 5 of the 20 questions
     must be in this category — fallback accuracy computed over 1–2
     questions would be too noisy to mean anything
 - **Ground truth is computed, not hand-typed.** `scripts/
   build_eval_answer_key.py` recomputes each question's exact correct
-  patient-ID set directly from the OMOP CSVs with pandas (same logic as
-  Block 3's Cypher queries) — typing out which of 11,424 patients match a
-  filter by hand would be error-prone and unverifiable. It also asserts
+  patient-ID set directly from the OMOP CSVs with pandas — condition/drug/
+  demographic/burden questions reuse Block 3's Cypher-query logic;
+  lab-threshold questions are computed straight from `measurement.csv`
+  instead (see Relationship to Block 3, since Block 3 never queried labs).
+  Typing out which of 11,436 patients match a filter by hand would be
+  error-prone and unverifiable. It also asserts
   the labeling is honest: every answerable question's computed set is
   non-empty, and every deliberately-unanswerable question's set is empty —
   failing loudly if a question is mislabeled, not just relying on the
@@ -542,7 +560,7 @@ non-deterministic parts, and it matters a lot which is which:
 | 2 | `phase-2-setup` | `requirements.txt`, `.env.example`, `.gitignore`, `scripts/check_connection.py`, `scripts/create_index.py` |
 | 3 | `phase-3-ingest` | `scripts/chunk_records.py`, `scripts/ingest.py`, `tests/test_chunking.py`, `data/raw/graph_export.jsonl` (copied from Block 3) |
 | 4 | `phase-4-retrieve-generate` | `scripts/retrieve.py`, `scripts/generate.py`, `scripts/api.py`, `tests/test_retrieve.py` |
-| 5 | `phase-5-eval` | `data/raw/condition_occurrence.csv`, `drug_exposure.csv`, `person.csv` (copied from Block 1, needed only here for ground truth), `data/eval/questions.json`, `scripts/build_eval_answer_key.py`, `scripts/run_eval.py`, `docs/eval_results.md` (includes the parameter experiment) |
+| 5 | `phase-5-eval` | `data/raw/condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`, `measurement.csv` (copied from Block 1, needed only here for ground truth), `data/eval/questions.json`, `scripts/build_eval_answer_key.py`, `scripts/run_eval.py`, `docs/eval_results.md` (includes the parameter experiment) |
 | 6 | `phase-6-verify-docs` | `scripts/run_all.py`, `scripts/verify.py`, `README.md` |
 
 Each phase gets its own PR (6 PRs total). `phase-1-spec` branches from
@@ -559,8 +577,8 @@ Block 4 does not include:
 - Real-time ingestion of new patients — this is a static, one-time load of
   Block 3's export
 - A reranking model or hybrid (keyword + vector) search
-- Support for questions about conditions/drugs outside the 3-condition,
-  6-drug whitelist established in Block 1 — those are expected to correctly
+- Support for questions about conditions/drugs outside the 11-condition,
+  17-drug whitelist established in Block 1 — those are expected to correctly
   produce "I don't know," not an error
 
 ## Known limitations
@@ -568,7 +586,7 @@ Block 4 does not include:
 Documented consciously, not discovered later — full reasoning lives with
 each design section, this is just the index:
 - No automated grounding check on Claude's citations (see Generation design)
-- 150-char chunking threshold is dataset-specific, not general-purpose (see Chunking design)
+- 200-char chunking threshold is dataset-specific, not general-purpose (see Chunking design)
 - No minimum eval score is enforced (see Eval harness design)
 - Pinecone and Claude failures share one generic error response (see API design)
 
@@ -578,7 +596,7 @@ Block 4 must:
 1. Provide a connectivity smoke test (`scripts/check_connection.py`) that
    confirms `PINECONE_API_KEY` and `ANTHROPIC_API_KEY` are valid before any
    ingestion or eval work begins.
-2. Chunk `graph_export.jsonl` records — records ≤ 150 characters stay
+2. Chunk `graph_export.jsonl` records — records ≤ 200 characters stay
    whole; longer records split on sentence boundaries. Covered by unit
    tests using synthetic long text, independent of whether real data
    happens to trigger a split.

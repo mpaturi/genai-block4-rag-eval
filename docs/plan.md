@@ -123,7 +123,7 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   the rest of the patient metadata, plus `chunk_index`)
 
 **Key decisions:**
-- 150-character threshold, whole sentences packed in one at a time (see
+- 200-character threshold, whole sentences packed in one at a time (see
   spec's Chunking design for the reasoning)
 - Oversized single-sentence fallback, tested with synthetic data since
   real data won't trigger it
@@ -132,6 +132,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 
 - [ ] Copy `graph_export.jsonl` from `genai-block3-graph-kb/data/export/`
       into `data/raw/`
+- [ ] Compute the `text` field's character-length distribution against the
+      copied file; confirm 200 chars still gives "most patients single-
+      chunk, high-burden patients split" (see spec's Chunking design)
 - [ ] Create `scripts/chunk_records.py`
 - [ ] Create `tests/test_chunking.py`
 - [ ] `pytest tests/test_chunking.py` — all pass
@@ -227,7 +230,8 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 ### Task 8: Eval ground truth
 
 **Files:** `data/raw/condition_occurrence.csv`, `drug_exposure.csv`,
-`person.csv`, `scripts/build_eval_answer_key.py`, `data/eval/questions.json`
+`person.csv`, `measurement.csv`, `scripts/build_eval_answer_key.py`,
+`data/eval/questions.json`
 
 **Interfaces:**
 - Consumes: Block 1's OMOP CSVs
@@ -235,17 +239,19 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   programmatically computed correct-patient-ID set per question
 
 **Key decisions:**
-- Ground truth is computed with pandas, not hand-typed (same logic as
-  Block 3's Cypher queries, reimplemented since there's no Neo4j here)
-- Question mix: co-occurrence, demographic-filtered, high-burden/visit
-  questions, and deliberately unanswerable ones to test "I don't know"
-  (at least 5 of the 20, per spec — fewer would make fallback accuracy
-  meaningless)
+- Ground truth is computed with pandas, not hand-typed: condition/drug/
+  demographic/burden questions reuse Block 3's Cypher-query logic;
+  lab-threshold questions are computed straight from `measurement.csv`
+  (Block 3 never queried labs — see spec's Relationship to Block 3)
+- Question mix: co-occurrence, demographic-filtered, high-burden/visit,
+  lab-threshold, and deliberately unanswerable questions to test "I don't
+  know" (at least 5 of the 20, per spec — fewer would make fallback
+  accuracy meaningless)
 - `build_eval_answer_key.py` asserts the labeling is honest: answerable
   questions get a non-empty computed set, unanswerable ones get an empty
   set — fails loudly on a mismatch instead of relying only on spot-checks
 
-- [ ] Copy the 3 OMOP CSVs from Block 1 into `data/raw/`
+- [ ] Copy the 4 OMOP CSVs from Block 1 into `data/raw/`
 - [ ] Create `scripts/build_eval_answer_key.py`
 - [ ] Write `data/eval/questions.json` (≥20 questions)
 - [ ] Run the answer-key builder's assertion check — confirm no question

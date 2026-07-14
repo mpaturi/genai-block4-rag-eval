@@ -49,6 +49,8 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 - [ ] `git checkout phase-2-setup && git checkout -b phase-3-ingest`
 - [ ] Copy `graph_export.jsonl` from Block 3's `data/export/` into `data/raw/`
+- [ ] Compute `text` length distribution against the real file; confirm the
+      200-char threshold still fits (see spec's Chunking design)
 - [ ] Create `scripts/chunk_records.py`
 - [ ] Create `tests/test_chunking.py` — cover short text, a split case, the
       oversized-sentence fallback, and empty text
@@ -84,11 +86,12 @@ still unmerged (stacked PR), or `main` if it already merged.
 ## Phase 5 — Eval (`phase-5-eval`, base: `phase-4-retrieve-generate`)
 
 - [ ] `git checkout phase-4-retrieve-generate && git checkout -b phase-5-eval`
-- [ ] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`
-      from Block 1 into `data/raw/`
+- [ ] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
+      `measurement.csv` from Block 1 into `data/raw/`
 - [ ] Create `scripts/build_eval_answer_key.py`
 - [ ] Write `data/eval/questions.json` (≥20 questions — co-occurrence,
-      demographic, high-burden/visit, and ≥5 deliberately unanswerable)
+      demographic, high-burden/visit, lab-threshold, and ≥5 deliberately
+      unanswerable)
 - [ ] Run the answer-key builder's assertion check — confirm no question
       is mislabeled (answerable has matches, unanswerable has none)
 - [ ] Spot-check a few computed answer keys by hand against the CSVs
