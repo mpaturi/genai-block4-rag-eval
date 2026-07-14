@@ -343,6 +343,8 @@ time, not from a hardcoded guess baked into this doc:
   eval experiment in Phase 5 (the other being `top_k`) — Phase 5 will run
   the eval at two different values and document which one scores better,
   rather than treating 0.75 as fixed
+- See Known limitations for why this single threshold does double duty as
+  both the relevance gate and the out-of-scope gate.
 - The threshold comparison itself (`score >= threshold`) is pure logic once
   a score exists, so it is unit-tested directly with fake scores in
   `tests/test_retrieve.py` — no live Pinecone call needed to verify this
@@ -436,19 +438,32 @@ outage — temporarily set an invalid `PINECONE_API_KEY` or
 
 - `data/eval/questions.json`: at least 20 questions, generated with a
   mix of intent:
-  - condition + drug co-occurrence questions (e.g. diabetes + metformin)
+  - condition + drug co-occurrence questions, always paired with a
+    demographic filter (gender and/or year_of_birth_band) so the
+    ground-truth set stays bounded — e.g. "male patients in their 1970s
+    with diabetes, taking metformin," never a bare condition+drug pair
   - demographic-filtered questions (e.g. male patients born in the 1970s
     with hypertension)
   - high-burden / visit-count questions (mirroring Block 3's Q3 and Q4)
-  - lab-threshold questions (e.g. "patients with HbA1c above 8%", "BMI over
-    30 and hypertension") — exercises the `latest_sbp`/`latest_bmi`/
-    `latest_glucose`/`latest_hba1c` fields Block 3 added
+  - lab-threshold questions, always paired with a demographic filter for
+    the same bounding reason — e.g. "female patients with hypertension
+    and BMI over 30," never a bare "BMI over 30" — exercises the
+    `latest_sbp`/`latest_bmi`/`latest_glucose`/`latest_hba1c` fields
+    Block 3 added
   - deliberately out-of-scope questions with no correct answer in this
     dataset (e.g. asking about a condition outside the 11-condition
     whitelist), which should trigger "I don't know" — these test the
     fallback path, not just the happy path. At least 5 of the 20 questions
     must be in this category — fallback accuracy computed over 1–2
     questions would be too noisy to mean anything
+- **Why every answerable question needs a demographic filter:** a bare
+  condition+drug or lab-threshold question can match hundreds of patients
+  (e.g. diabetes + metformin alone matches 222 of 11,436 real patients),
+  while retrieval only returns `top_k` (max 20) chunks. Recall would be
+  structurally capped near zero regardless of retrieval quality — the
+  metric would measure `top_k` size, not retrieval quality. A demographic
+  filter keeps ground-truth sets small enough that a good `top_k` can
+  plausibly cover them.
 - **Ground truth is computed, not hand-typed.** `scripts/
   build_eval_answer_key.py` recomputes each question's exact correct
   patient-ID set directly from the OMOP CSVs with pandas — condition/drug/
@@ -460,7 +475,11 @@ outage — temporarily set an invalid `PINECONE_API_KEY` or
   the labeling is honest: every answerable question's computed set is
   non-empty, and every deliberately-unanswerable question's set is empty —
   failing loudly if a question is mislabeled, not just relying on the
-  manual spot-check below
+  manual spot-check below. It also flags any answerable question whose
+  computed ground-truth set is disproportionately larger than `top_k` —
+  the concrete size threshold (e.g. 3-4x `top_k`) is set once real set
+  sizes are known from running the builder against the actual data, not
+  guessed here
 - **Two separate metrics are reported, not blended into one number:**
   - **Retrieval precision/recall** — computed only across the questions
     that have a real answer set (patient-ID overlap between retrieved and
@@ -589,6 +608,13 @@ each design section, this is just the index:
 - 200-char chunking threshold is dataset-specific, not general-purpose (see Chunking design)
 - No minimum eval score is enforced (see Eval harness design)
 - Pinecone and Claude failures share one generic error response (see API design)
+- Score threshold (0.75) serves two jobs at once — relevance gating and
+  out-of-scope rejection — which may want different cutoffs; templated
+  summaries sharing clinical vocabulary make it possible for an
+  out-of-scope question to still score above threshold against an
+  unrelated in-scope patient. Not addressed with a second threshold;
+  captured by fallback accuracy and the Phase 5 threshold experiment (see
+  Retrieval design, Eval harness design).
 
 ## Functional requirements
 
