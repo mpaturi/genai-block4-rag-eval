@@ -32,10 +32,10 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 ## Phase 2 — Setup (`phase-2-setup`, base: `phase-1-spec`)
 
-- [ ] `git checkout phase-1-spec && git checkout -b phase-2-setup`
-- [ ] Create `requirements.txt`, `.env.example`
-- [ ] Confirm `.gitignore` covers `.env`
-- [ ] `pip install -r requirements.txt`, then pin exact versions
+- [x] `git checkout phase-1-spec && git checkout -b phase-2-setup`
+- [x] Create `requirements.txt`, `.env.example`
+- [x] Confirm `.gitignore` covers `.env`
+- [x] `pip install -r requirements.txt`, then pin exact versions
 - [ ] Create `scripts/check_connection.py`
 - [ ] Run connection smoke test — confirm both Pinecone and Claude keys OK
 - [ ] Create `scripts/create_index.py`

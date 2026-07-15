@@ -183,17 +183,17 @@ scripts/run_all.py            (runs check_connection -> create_index ->
 | Component | Notes |
 |---|---|
 | Python | 3.11 |
-| pinecone | Python SDK, integrated inference support (`create_index_for_model`, `upsert_records`, `search`) — exact version pinned once installed |
-| anthropic | Python SDK for Claude API — exact version pinned once installed |
-| fastapi | API framework |
-| uvicorn | the web server that actually runs the FastAPI app |
-| pandas | CSV joins for eval ground-truth computation |
-| python-dotenv | loads `.env` credentials |
-| orjson | fast JSON read/write for chunking and eval scripts |
-| pytest | unit tests for chunking and threshold-decision logic |
+| pinecone==9.1.0 | Python SDK, integrated inference support (`create_index_for_model`, `upsert_records`, `search`) |
+| anthropic==0.116.0 | Python SDK for Claude API |
+| fastapi==0.139.0 | API framework |
+| uvicorn==0.51.0 | the web server that actually runs the FastAPI app |
+| pandas==3.0.3 | CSV joins for eval ground-truth computation |
+| python-dotenv==1.2.2 | loads `.env` credentials |
+| orjson==3.11.9 | fast JSON read/write for chunking and eval scripts |
+| pytest==9.1.1 | unit tests for chunking and threshold-decision logic |
 
-> Exact version numbers get filled in during Phase 2 setup, once installed —
-> per project rule, `requirements.txt` uses `==` pins, never `>=`.
+> Versions pinned in Phase 2 setup, installed into `.venv`. Per project
+> rule, `requirements.txt` uses `==` pins, never `>=`.
 
 ## Credentials and configuration
 

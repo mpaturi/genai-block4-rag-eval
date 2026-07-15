@@ -59,9 +59,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - `.gitignore` (Python template + `.env`) already exists from repo creation
   — just confirm `.env` is actually covered
 
-- [ ] Create `requirements.txt`, `.env.example`
+- [x] Create `requirements.txt`, `.env.example`
 - [ ] `cp .env.example .env` and fill in real keys once you have them
-- [ ] `pip install -r requirements.txt`, then freeze exact versions back
+- [x] `pip install -r requirements.txt`, then freeze exact versions back
       into `requirements.txt`
 - [ ] Commit: `feat(setup): add Python deps and env template`
 
