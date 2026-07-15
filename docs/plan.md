@@ -27,6 +27,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   never assumes partial state
 - `run_eval.py` calls `retrieve.py` directly — it never calls `generate.py`
   or Claude
+- Any file with a corresponding test file is built test-first: the test
+  file is written before the implementation exists, so it starts failing,
+  then the implementation is written against it until it passes
 
 ## File map
 
@@ -60,10 +63,10 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   — just confirm `.env` is actually covered
 
 - [x] Create `requirements.txt`, `.env.example`
-- [ ] `cp .env.example .env` and fill in real keys once you have them
+- [x] `cp .env.example .env` and fill in real keys once you have them
 - [x] `pip install -r requirements.txt`, then freeze exact versions back
       into `requirements.txt`
-- [ ] Commit: `feat(setup): add Python deps and env template`
+- [x] Commit: `feat(setup): add Python deps and env template`
 
 ---
 
@@ -135,8 +138,8 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - [ ] Compute the `text` field's character-length distribution against the
       copied file; confirm 200 chars still gives "most patients single-
       chunk, high-burden patients split" (see spec's Chunking design)
-- [ ] Create `scripts/chunk_records.py`
 - [ ] Create `tests/test_chunking.py`
+- [ ] Create `scripts/chunk_records.py`
 - [ ] `pytest tests/test_chunking.py` — all pass
 - [ ] During Phase 3 ingestion, test the empty-text chunk path against real
       Pinecone — confirm whether integrated inference accepts an empty
@@ -194,8 +197,8 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - The threshold comparison is pure logic, unit-tested with fake scores —
   no live Pinecone call needed for that part
 
-- [ ] Create `scripts/retrieve.py`
 - [ ] Create `tests/test_retrieve.py`
+- [ ] Create `scripts/retrieve.py`
 - [ ] `pytest tests/test_retrieve.py` — all pass
 - [ ] Run a real query by hand — confirm results look sensible
 - [ ] Commit: `feat(query): add retrieval with score-threshold logic`

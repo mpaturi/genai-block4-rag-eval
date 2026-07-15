@@ -51,9 +51,9 @@ still unmerged (stacked PR), or `main` if it already merged.
 - [ ] Copy `graph_export.jsonl` from Block 3's `data/export/` into `data/raw/`
 - [ ] Compute `text` length distribution against the real file; confirm the
       200-char threshold still fits (see spec's Chunking design)
-- [ ] Create `scripts/chunk_records.py`
 - [ ] Create `tests/test_chunking.py` — cover short text, a split case, the
       oversized-sentence fallback, and empty text
+- [ ] Create `scripts/chunk_records.py`
 - [ ] `pytest tests/test_chunking.py` — all pass
 - [ ] Create `scripts/ingest.py`
 - [ ] Run — confirm vector count roughly matches patient count
@@ -71,8 +71,8 @@ still unmerged (stacked PR), or `main` if it already merged.
 ## Phase 4 — Retrieve + Generate (`phase-4-retrieve-generate`, base: `phase-3-ingest`)
 
 - [ ] `git checkout phase-3-ingest && git checkout -b phase-4-retrieve-generate`
-- [ ] Create `scripts/retrieve.py`
 - [ ] Create `tests/test_retrieve.py` — cover above/below/exactly-at threshold
+- [ ] Create `scripts/retrieve.py`
 - [ ] `pytest tests/test_retrieve.py` — all pass
 - [ ] Run a real query by hand — confirm results look sensible
 - [ ] Create `scripts/generate.py`
