@@ -36,12 +36,12 @@ still unmerged (stacked PR), or `main` if it already merged.
 - [x] Create `requirements.txt`, `.env.example`
 - [x] Confirm `.gitignore` covers `.env`
 - [x] `pip install -r requirements.txt`, then pin exact versions
-- [ ] Create `scripts/check_connection.py`
-- [ ] Run connection smoke test — confirm both Pinecone and Claude keys OK
-- [ ] Create `scripts/create_index.py`
-- [ ] Run — confirm index created, note the printed scoring metric
-- [ ] Re-run — confirm no error, no duplicate index
-- [ ] Commit Phase 2 files
+- [x] Create `scripts/check_connection.py`
+- [x] Run connection smoke test — confirm both Pinecone and Claude keys OK
+- [x] Create `scripts/create_index.py`
+- [x] Run — confirm index created, note the printed scoring metric (cosine — higher is more relevant)
+- [x] Re-run — confirm no error, no duplicate index
+- [x] Commit Phase 2 files
 - [ ] `git push -u origin phase-2-setup`
 - [ ] Open PR2: base `phase-1-spec` (or `main` if PR1 already merged)
 

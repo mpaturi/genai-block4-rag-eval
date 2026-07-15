@@ -82,9 +82,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Catches auth errors separately from network/timeout errors for a useful
   message
 
-- [ ] Create `scripts/check_connection.py`
-- [ ] Run — confirm both keys report OK
-- [ ] Commit: `feat(setup): add Pinecone and Claude connection smoke test`
+- [x] Create `scripts/check_connection.py`
+- [x] Run — confirm both keys report OK
+- [x] Commit: `feat(setup): add Pinecone and Claude connection smoke test`
 
 ---
 
@@ -105,10 +105,10 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   runs in Phase 2. The empirical self-match check (Task 5) confirms the
   direction for real once chunks exist
 
-- [ ] Create `scripts/create_index.py`
-- [ ] Run — confirm index created, note the printed scoring metric
-- [ ] Re-run — confirm it does not error or create a duplicate index
-- [ ] Commit: `feat(setup): add idempotent Pinecone index creation`
+- [x] Create `scripts/create_index.py`
+- [x] Run — confirm index created, note the printed scoring metric (cosine — higher is more relevant)
+- [x] Re-run — confirm it does not error or create a duplicate index
+- [x] Commit: `feat(setup): add idempotent Pinecone index creation`
 
 ---
 
