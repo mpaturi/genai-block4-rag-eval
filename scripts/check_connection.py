@@ -39,6 +39,18 @@ def check_pinecone() -> bool:
         return False
 
 
+def check_index_name() -> bool:
+    """Confirm PINECONE_INDEX_NAME is set - a missing index name wouldn't
+    fail here otherwise, but would fail one step later in create_index.py,
+    so this is the earliest point to catch it."""
+    index_name = os.environ.get("PINECONE_INDEX_NAME")
+    if not index_name:
+        print("[Pinecone] FAIL - PINECONE_INDEX_NAME not set in .env")
+        return False
+    print(f"[Pinecone] OK - PINECONE_INDEX_NAME is set ('{index_name}')")
+    return True
+
+
 def check_anthropic() -> bool:
     """Confirm ANTHROPIC_API_KEY is set and can authenticate with Claude."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -67,11 +79,12 @@ def check_anthropic() -> bool:
 
 
 def main() -> int:
-    """Run both checks and report a combined pass/fail result."""
+    """Run all checks and report a combined pass/fail result."""
     pinecone_ok = check_pinecone()
+    index_name_ok = check_index_name()
     anthropic_ok = check_anthropic()
 
-    if pinecone_ok and anthropic_ok:
+    if pinecone_ok and index_name_ok and anthropic_ok:
         print("\nAll connections OK.")
         return 0
 
