@@ -133,19 +133,19 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - `tests/test_chunking.py` covers: short text (1 chunk), text needing a
   split (2+ chunks), the oversized-sentence fallback, and empty text
 
-- [ ] Copy `graph_export.jsonl` from `genai-block3-graph-kb/data/export/`
+- [x] Copy `graph_export.jsonl` from `genai-block3-graph-kb/data/export/`
       into `data/raw/`
-- [ ] Compute the `text` field's character-length distribution against the
+- [x] Compute the `text` field's character-length distribution against the
       copied file; confirm 200 chars still gives "most patients single-
       chunk, high-burden patients split" (see spec's Chunking design)
-- [ ] Create `tests/test_chunking.py`
-- [ ] Create `scripts/chunk_records.py`
-- [ ] `pytest tests/test_chunking.py` — all pass
+- [x] Create `tests/test_chunking.py`
+- [x] Create `scripts/chunk_records.py`
+- [x] `pytest tests/test_chunking.py` — all pass
 - [x] During Phase 3 ingestion, test the empty-text chunk path against real
       Pinecone — confirm whether integrated inference accepts an empty
       `chunk_text` string; if rejected, adjust `chunk_records.py` to
       substitute a minimal placeholder instead (see spec's Chunking design)
-- [ ] Commit: `feat(ingest): add chunking logic and unit tests`
+- [x] Commit: `feat(ingest): add chunking logic and unit tests`
 
 ---
 
@@ -171,14 +171,14 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Allows a brief wait after upserting before treating a count check as
   final (Pinecone writes are not instantly queryable)
 
-- [ ] Create `scripts/ingest.py`
-- [ ] Run — confirm all batches upload and vector count roughly matches
+- [x] Create `scripts/ingest.py`
+- [x] Run — confirm all batches upload and vector count roughly matches
       patient count
-- [ ] Re-run — confirm the count is identical (idempotency, not assumed)
-- [ ] Run one self-match query (search using a known chunk's own text,
+- [x] Re-run — confirm the count is identical (idempotency, not assumed)
+- [x] Run one self-match query (search using a known chunk's own text,
       confirm it returns itself as top match) — confirms score direction
       empirically, per spec's Retrieval design
-- [ ] Commit: `feat(ingest): add idempotent ingestion into Pinecone`
+- [x] Commit: `feat(ingest): add idempotent ingestion into Pinecone`
 
 ---
 

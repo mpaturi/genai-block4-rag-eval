@@ -47,26 +47,26 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 ## Phase 3 — Ingest (`phase-3-ingest`, base: `phase-2-setup`)
 
-- [ ] `git checkout phase-2-setup && git checkout -b phase-3-ingest`
-- [ ] Copy `graph_export.jsonl` from Block 3's `data/export/` into `data/raw/`
-- [ ] Compute `text` length distribution against the real file; confirm the
+- [x] `git checkout phase-2-setup && git checkout -b phase-3-ingest`
+- [x] Copy `graph_export.jsonl` from Block 3's `data/export/` into `data/raw/`
+- [x] Compute `text` length distribution against the real file; confirm the
       200-char threshold still fits (see spec's Chunking design)
-- [ ] Create `tests/test_chunking.py` — cover short text, a split case, the
+- [x] Create `tests/test_chunking.py` — cover short text, a split case, the
       oversized-sentence fallback, and empty text
-- [ ] Create `scripts/chunk_records.py`
-- [ ] `pytest tests/test_chunking.py` — all pass
-- [ ] Create `scripts/ingest.py`
-- [ ] Run — confirm vector count roughly matches patient count
-- [ ] Re-run — confirm identical count (idempotency, verified not assumed)
+- [x] Create `scripts/chunk_records.py`
+- [x] `pytest tests/test_chunking.py` — all pass
+- [x] Create `scripts/ingest.py`
+- [x] Run — confirm vector count roughly matches patient count
+- [x] Re-run — confirm identical count (idempotency, verified not assumed)
 - [x] Run one self-match query — confirm a chunk's own text returns itself
       as top match (confirms score direction empirically)
 - [x] Test the empty-text chunk path against real Pinecone — confirm
       accept/reject behavior for an empty `chunk_text` string; if rejected,
       adjust `chunk_records.py`'s fallback (see spec's Chunking design)
-- [ ] Commit `scripts/chunk_records.py`, `scripts/ingest.py`,
+- [x] Commit `scripts/chunk_records.py`, `scripts/ingest.py`,
       `tests/test_chunking.py`, `data/raw/graph_export.jsonl`
-- [ ] `git push -u origin phase-3-ingest`
-- [ ] Open PR3: base `phase-2-setup` (or `main` if PR2 already merged)
+- [x] `git push -u origin phase-3-ingest`
+- [x] Open PR3: base `phase-2-setup` (or `main` if PR2 already merged)
 
 ## Phase 4 — Retrieve + Generate (`phase-4-retrieve-generate`, base: `phase-3-ingest`)
 
