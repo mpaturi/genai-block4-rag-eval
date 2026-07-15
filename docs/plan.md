@@ -197,11 +197,11 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - The threshold comparison is pure logic, unit-tested with fake scores —
   no live Pinecone call needed for that part
 
-- [ ] Create `tests/test_retrieve.py`
-- [ ] Create `scripts/retrieve.py`
-- [ ] `pytest tests/test_retrieve.py` — all pass
-- [ ] Run a real query by hand — confirm results look sensible
-- [ ] Commit: `feat(query): add retrieval with score-threshold logic`
+- [x] Create `tests/test_retrieve.py`
+- [x] Create `scripts/retrieve.py`
+- [x] `pytest tests/test_retrieve.py` — all pass
+- [x] Run a real query by hand — confirm results look sensible
+- [x] Commit: `feat(query): add retrieval with score-threshold logic`
 
 ---
 
@@ -226,11 +226,11 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Pinecone/Claude failures caught and returned as one generic 502, never a
   raw stack trace
 
-- [ ] Create `scripts/generate.py`
-- [ ] Create `scripts/api.py`
-- [ ] Run the API locally, test all 3 response shapes by hand (a match, no
+- [x] Create `scripts/generate.py`
+- [x] Create `scripts/api.py`
+- [x] Run the API locally, test all 3 response shapes by hand (a match, no
       match, and a simulated failure — e.g. a temporarily invalid API key)
-- [ ] Commit: `feat(query): add generation and FastAPI endpoint`
+- [x] Commit: `feat(query): add generation and FastAPI endpoint`
 
 ---
 
