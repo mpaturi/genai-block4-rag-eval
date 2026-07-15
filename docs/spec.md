@@ -229,16 +229,17 @@ after setup, so a bad key is caught immediately instead of mid-ingestion.
   7.8% (893 patients): most stay single-chunk, and high-burden patients
   (Block 3's Q3 population) still get real multi-chunk coverage.
 - **Empty text:** a patient with an empty `text` field still produces one
-  chunk — a single empty-string chunk — rather than being dropped, so the
-  "every patient produces ≥1 chunk" invariant (Expected statistics) holds.
-  Such a chunk simply never scores as a strong retrieval match. This path
-  is defensive only — Block 3's template always emits a full sentence even
-  for a patient with nothing to report (e.g. "Conditions: none. Drugs:
-  none."), so real data never actually hits it. Whether Pinecone's
-  integrated inference even accepts an empty string for `chunk_text` is
-  unconfirmed; Phase 3 checks this against the real index and substitutes
-  a minimal placeholder instead of the empty string if it's rejected,
-  rather than assuming it works.
+  chunk — rather than being dropped, so the "every patient produces ≥1
+  chunk" invariant (Expected statistics) holds. Such a chunk simply never
+  scores as a strong retrieval match. This path is defensive only — Block
+  3's template always emits a full sentence even for a patient with
+  nothing to report (e.g. "Conditions: none. Drugs: none."), so real data
+  never actually hits it. **Confirmed in Phase 3 against the real index:
+  Pinecone's integrated inference rejects an empty string for
+  `chunk_text`** (`400 INVALID_ARGUMENT`, embedding error). `chunk_text()`
+  substitutes the placeholder string `"No data available."`
+  (`EMPTY_TEXT_PLACEHOLDER` in `scripts/chunk_records.py`) instead of `""`
+  in this case.
 - **Fallback case:** if a single sentence is itself longer than 200
   characters (not expected here, but not guaranteed forever if the text
   template changes), it becomes its own oversized chunk rather than
