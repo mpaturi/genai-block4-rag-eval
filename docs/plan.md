@@ -237,11 +237,12 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 ### Task 8: Eval ground truth
 
 **Files:** `data/raw/condition_occurrence.csv`, `drug_exposure.csv`,
-`person.csv`, `measurement.csv`, `scripts/build_eval_answer_key.py`,
+`person.csv`, `measurement.csv`, `visit_occurrence.csv`,
+`scripts/concepts.py`, `scripts/build_eval_answer_key.py`,
 `data/eval/questions.json`
 
 **Interfaces:**
-- Consumes: Block 1's OMOP CSVs
+- Consumes: Block 1's OMOP CSVs, `scripts/concepts.py`'s concept-ID mappings
 - Produces: `data/eval/questions.json` (≥20 questions) with a
   programmatically computed correct-patient-ID set per question
 
@@ -250,6 +251,11 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   demographic/burden questions reuse Block 3's Cypher-query logic;
   lab-threshold questions are computed straight from `measurement.csv`
   (Block 3 never queried labs — see spec's Relationship to Block 3)
+- High-burden/visit-count ground truth is recomputed from
+  `visit_occurrence.csv`, not trusted from `graph_export.jsonl`'s
+  precomputed `visit_count` field — same independence reasoning as
+  `measurement.csv` for lab thresholds (see spec's Relationship to Block 3
+  and Eval harness design)
 - Question mix: co-occurrence, demographic-filtered, high-burden/visit,
   lab-threshold, and deliberately unanswerable questions to test "I don't
   know" (at least 5 of the 20, per spec — fewer would make fallback
@@ -258,13 +264,15 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   questions get a non-empty computed set, unanswerable ones get an empty
   set — fails loudly on a mismatch instead of relying only on spot-checks
 
-- [ ] Copy the 4 OMOP CSVs from Block 1 into `data/raw/`
-- [ ] Create `scripts/build_eval_answer_key.py`
-- [ ] Write `data/eval/questions.json` (≥20 questions)
-- [ ] Run the answer-key builder's assertion check — confirm no question
+- [x] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
+      `measurement.csv`, `visit_occurrence.csv` from Block 1 into `data/raw/`
+- [x] Copy `scripts/concepts.py` from Block 1
+- [x] Create `scripts/build_eval_answer_key.py`
+- [x] Write `data/eval/questions.json` (≥20 questions)
+- [x] Run the answer-key builder's assertion check — confirm no question
       is mislabeled
-- [ ] Spot-check a few answer keys by hand against the CSVs
-- [ ] Commit: `feat(eval): add eval questions and ground-truth builder`
+- [x] Spot-check a few answer keys by hand against the CSVs
+- [x] Commit: `feat(eval): add eval questions and ground-truth builder`
 
 ---
 
@@ -292,12 +300,12 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   re-run and Task 6's manual query test already establish this; `verify.py`
   (Task 10) doesn't exist yet at this point and isn't a precondition here
 
-- [ ] Create `scripts/run_eval.py`
-- [ ] Run once at the default settings — record the score
-- [ ] Change one setting (`top_k` or the threshold) and run again
-- [ ] Write `docs/eval_results.md` — both runs, both metrics, a short note
+- [x] Create `scripts/run_eval.py`
+- [x] Run once at the default settings — record the score
+- [x] Change one setting (`top_k` or the threshold) and run again
+- [x] Write `docs/eval_results.md` — both runs, both metrics, a short note
       on what changed and why
-- [ ] Commit: `feat(eval): add eval runner and document parameter experiment`
+- [x] Commit: `feat(eval): add eval runner and document parameter experiment`
 
 ---
 

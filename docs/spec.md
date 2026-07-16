@@ -50,7 +50,8 @@ repos at runtime).
 `person.csv` (the same Block 1 OMOP files Block 3 used) — needed because
 `graph_export.jsonl` metadata only stores *counts* (`condition_count`,
 `drug_count`), not condition/drug names as structured, filterable fields.
-`measurement.csv` is also copied in, for a different reason — see below.
+`measurement.csv` and `visit_occurrence.csv` are also copied in, for a
+different reason — see below.
 
 Block 3 artifacts reused:
 - `graph_export.jsonl` (11,436 patient records, `text` + `metadata` fields)
@@ -59,7 +60,7 @@ Block 3 artifacts reused:
 - The 4 Cypher queries' *logic* (reimplemented as pandas filters against the
   CSVs, since this repo has no Neo4j connection)
 
-Block 1 artifact reused directly (not via Block 3):
+Block 1 artifacts reused directly (not via Block 3):
 - `measurement.csv` — the four lab values are already structured in
   `graph_export.jsonl`'s metadata, but they're Block 3's own computed
   "latest per patient" output. Using `measurement.csv` instead means
@@ -68,8 +69,17 @@ Block 1 artifact reused directly (not via Block 3):
   conditions/drugs above, just for a different reason (there, the
   structured data is simply absent from the JSONL; here, it's present
   but not independently sourced). Replicates Block 1's "latest value per
-  concept per patient" logic (`measurement_concept_id` mapping in Block
-  1's `src/concepts.py`).
+  concept per patient" logic (`measurement_concept_id` mapping, copied
+  into this repo as `scripts/concepts.py`).
+- `visit_occurrence.csv` — same reasoning as `measurement.csv`, applied to
+  `visit_count`: that field is also already present in `graph_export.jsonl`'s
+  metadata as Block 3's own precomputed output, so high-burden/visit-count
+  eval ground truth is recomputed from `visit_occurrence.csv` instead of
+  trusted from the JSONL, for the same independence reason.
+- `scripts/concepts.py` — Block 1's Synthea-code-to-concept-ID mapping,
+  copied in so `build_eval_answer_key.py` can map condition/drug/measurement
+  names the same way Block 1 and Block 3 did, without redefining the
+  whitelist a third time.
 
 Block 3 artifacts NOT reused:
 - Neo4j itself — this repo never connects to a graph database at runtime
@@ -478,6 +488,12 @@ outage — temporarily set an invalid `PINECONE_API_KEY` or
   demographic/burden questions reuse Block 3's Cypher-query logic;
   lab-threshold questions are computed straight from `measurement.csv`
   instead (see Relationship to Block 3, since Block 3 never queried labs).
+  The same independence reasoning applies to high-burden/visit-count
+  questions: ground truth for those is recomputed from `visit_occurrence.csv`
+  rather than trusted from `graph_export.jsonl`'s precomputed `visit_count`
+  field — using that field directly would mean trusting the same Block 3
+  pipeline the eval is supposed to be independently checking, exactly the
+  gap `measurement.csv` closes for lab thresholds above.
   Typing out which of 11,436 patients match a filter by hand would be
   error-prone and unverifiable. It also asserts
   the labeling is honest: every answerable question's computed set is
@@ -587,7 +603,7 @@ non-deterministic parts, and it matters a lot which is which:
 | 2 | `phase-2-setup` | `requirements.txt`, `.env.example`, `.gitignore`, `scripts/check_connection.py`, `scripts/create_index.py` |
 | 3 | `phase-3-ingest` | `scripts/chunk_records.py`, `scripts/ingest.py`, `tests/test_chunking.py`, `data/raw/graph_export.jsonl` (copied from Block 3) |
 | 4 | `phase-4-retrieve-generate` | `scripts/retrieve.py`, `scripts/generate.py`, `scripts/api.py`, `tests/test_retrieve.py` |
-| 5 | `phase-5-eval` | `data/raw/condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`, `measurement.csv` (copied from Block 1, needed only here for ground truth), `data/eval/questions.json`, `scripts/build_eval_answer_key.py`, `scripts/run_eval.py`, `docs/eval_results.md` (includes the parameter experiment) |
+| 5 | `phase-5-eval` | `data/raw/condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`, `measurement.csv`, `visit_occurrence.csv` (copied from Block 1, needed only here for ground truth), `scripts/concepts.py` (copied from Block 1, concept-ID mappings for the answer-key builder), `data/eval/questions.json`, `scripts/build_eval_answer_key.py`, `scripts/run_eval.py`, `docs/eval_results.md` (includes the parameter experiment) |
 | 6 | `phase-6-verify-docs` | `scripts/run_all.py`, `scripts/verify.py`, `README.md` |
 
 Each phase gets its own PR (6 PRs total). `phase-1-spec` branches from

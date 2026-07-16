@@ -88,24 +88,26 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 ## Phase 5 — Eval (`phase-5-eval`, base: `phase-4-retrieve-generate`)
 
-- [ ] `git checkout phase-4-retrieve-generate && git checkout -b phase-5-eval`
-- [ ] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
-      `measurement.csv` from Block 1 into `data/raw/`
-- [ ] Create `scripts/build_eval_answer_key.py`
-- [ ] Write `data/eval/questions.json` (≥20 questions — co-occurrence,
+- [x] `git checkout phase-4-retrieve-generate && git checkout -b phase-5-eval`
+- [x] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
+      `measurement.csv`, `visit_occurrence.csv` from Block 1 into `data/raw/`
+- [x] Copy `scripts/concepts.py` from Block 1
+- [x] Create `scripts/build_eval_answer_key.py`
+- [x] Write `data/eval/questions.json` (≥20 questions — co-occurrence,
       demographic, high-burden/visit, lab-threshold, and ≥5 deliberately
       unanswerable)
-- [ ] Run the answer-key builder's assertion check — confirm no question
+- [x] Run the answer-key builder's assertion check — confirm no question
       is mislabeled (answerable has matches, unanswerable has none)
-- [ ] Spot-check a few computed answer keys by hand against the CSVs
-- [ ] Create `scripts/run_eval.py` (calls `retrieve.py` only, never Claude)
-- [ ] Run once at default settings — record precision/recall/fallback accuracy
-- [ ] Change one setting (`top_k` or the threshold), run again
-- [ ] Write `docs/eval_results.md` — both runs, both metrics, a short note
+- [x] Spot-check a few computed answer keys by hand against the CSVs
+- [x] Create `scripts/run_eval.py` (calls `retrieve.py` only, never Claude)
+- [x] Run once at default settings — record precision/recall/fallback accuracy
+- [x] Change one setting (`top_k` or the threshold), run again
+- [x] Write `docs/eval_results.md` — both runs, both metrics, a short note
       on what changed and why
-- [ ] Commit `data/raw/*.csv`, `scripts/build_eval_answer_key.py`,
-      `data/eval/questions.json`, `scripts/run_eval.py`, `docs/eval_results.md`
-- [ ] `git push -u origin phase-5-eval`
+- [x] Commit `data/raw/*.csv`, `scripts/concepts.py`,
+      `scripts/build_eval_answer_key.py`, `data/eval/questions.json`,
+      `scripts/run_eval.py`, `docs/eval_results.md`
+- [x] `git push -u origin phase-5-eval`
 - [ ] Open PR5: base `phase-4-retrieve-generate` (or `main` if PR4 already merged)
 
 ## Phase 6 — Verify + Docs (`phase-6-verify-docs`, base: `phase-5-eval`)
