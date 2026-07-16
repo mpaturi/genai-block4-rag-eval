@@ -108,7 +108,7 @@ still unmerged (stacked PR), or `main` if it already merged.
       `scripts/build_eval_answer_key.py`, `data/eval/questions.json`,
       `scripts/run_eval.py`, `docs/eval_results.md`
 - [x] `git push -u origin phase-5-eval`
-- [ ] Open PR5: base `phase-4-retrieve-generate` (or `main` if PR4 already merged)
+- [x] Open PR5: base `phase-4-retrieve-generate` (or `main` if PR4 already merged)
 
 ## Phase 6 — Verify + Docs (`phase-6-verify-docs`, base: `phase-5-eval`)
 
