@@ -1,0 +1,142 @@
+[
+  {
+    "id": "q01",
+    "type": "co_occurrence",
+    "question": "Which male patients born in the 1960s have type 2 diabetes and are taking Metformin?",
+    "filters": { "condition": "type 2 diabetes", "drug": "Metformin", "gender": "M", "birth_decade": 1960 },
+    "answerable": true
+  },
+  {
+    "id": "q02",
+    "type": "co_occurrence",
+    "question": "Which female patients born in the 1990s have hypertension and take Lisinopril?",
+    "filters": { "condition": "hypertension", "drug": "Lisinopril", "gender": "F", "birth_decade": 1990 },
+    "answerable": true
+  },
+  {
+    "id": "q03",
+    "type": "co_occurrence",
+    "question": "Which male patients born in the 1980s have hyperlipidemia and are on Simvastatin?",
+    "filters": { "condition": "hyperlipidemia", "drug": "Simvastatin", "gender": "M", "birth_decade": 1980 },
+    "answerable": true
+  },
+  {
+    "id": "q04",
+    "type": "co_occurrence",
+    "question": "Which female patients born in the 1950s have atrial fibrillation and take Warfarin?",
+    "filters": { "condition": "atrial fibrillation", "drug": "Warfarin", "gender": "F", "birth_decade": 1950 },
+    "answerable": true
+  },
+  {
+    "id": "q05",
+    "type": "co_occurrence",
+    "question": "Which male patients born in the 1950s have congestive heart failure and are on Furosemide?",
+    "filters": { "condition": "congestive heart failure", "drug": "Furosemide", "gender": "M", "birth_decade": 1950 },
+    "answerable": true
+  },
+  {
+    "id": "q06",
+    "type": "demographic",
+    "question": "Which male patients born in the 1980s have osteoarthritis?",
+    "filters": { "condition": "osteoarthritis", "gender": "M", "birth_decade": 1980 },
+    "answerable": true
+  },
+  {
+    "id": "q07",
+    "type": "demographic",
+    "question": "Which female patients born in the 1980s have had a pulmonary embolism?",
+    "filters": { "condition": "a pulmonary embolism", "gender": "F", "birth_decade": 1980 },
+    "answerable": true
+  },
+  {
+    "id": "q08",
+    "type": "demographic",
+    "question": "Which female patients born in the 1970s have had a urinary tract infection?",
+    "filters": { "condition": "a urinary tract infection", "gender": "F", "birth_decade": 1970 },
+    "answerable": true
+  },
+  {
+    "id": "q09",
+    "type": "demographic",
+    "question": "Which male patients born in the 1980s have congestive heart failure?",
+    "filters": { "condition": "congestive heart failure", "gender": "M", "birth_decade": 1980 },
+    "answerable": true
+  },
+  {
+    "id": "q10",
+    "type": "high_burden",
+    "question": "Which male patients born in the 1960s have had 3 or more visits?",
+    "filters": { "min_visit_count": 3, "gender": "M", "birth_decade": 1960 },
+    "answerable": true
+  },
+  {
+    "id": "q11",
+    "type": "high_burden",
+    "question": "Which female patients born in the 1950s have had 3 or more visits?",
+    "filters": { "min_visit_count": 3, "gender": "F", "birth_decade": 1950 },
+    "answerable": true
+  },
+  {
+    "id": "q12",
+    "type": "high_burden",
+    "question": "Which male patients born in the 1980s have had 3 or more visits?",
+    "filters": { "min_visit_count": 3, "gender": "M", "birth_decade": 1980 },
+    "answerable": true
+  },
+  {
+    "id": "q13",
+    "type": "lab_threshold",
+    "question": "Which female patients born in the 1970s have hypertension and a systolic blood pressure above 140?",
+    "filters": { "condition": "hypertension", "gender": "F", "birth_decade": 1970, "lab": "sbp", "operator": ">", "value": 140 },
+    "answerable": true
+  },
+  {
+    "id": "q14",
+    "type": "lab_threshold",
+    "question": "Which male patients have type 2 diabetes and a glucose reading above 126?",
+    "filters": { "condition": "type 2 diabetes", "gender": "M", "lab": "glucose", "operator": ">", "value": 126 },
+    "answerable": true
+  },
+  {
+    "id": "q15",
+    "type": "lab_threshold",
+    "question": "Which female patients born in the 1990s have type 2 diabetes and an HbA1c above 6.5?",
+    "filters": { "condition": "type 2 diabetes", "gender": "F", "birth_decade": 1990, "lab": "hba1c", "operator": ">", "value": 6.5 },
+    "answerable": true
+  },
+  {
+    "id": "q16",
+    "type": "unanswerable",
+    "question": "Which patients have asthma and are taking albuterol?",
+    "filters": { "condition": "asthma", "drug": "albuterol" },
+    "answerable": false
+  },
+  {
+    "id": "q17",
+    "type": "unanswerable",
+    "question": "Which female patients born in the 1970s have migraines?",
+    "filters": { "condition": "migraine", "gender": "F", "birth_decade": 1970 },
+    "answerable": false
+  },
+  {
+    "id": "q18",
+    "type": "unanswerable",
+    "question": "Which patients have a cholesterol level above 300?",
+    "filters": { "lab": "cholesterol", "operator": ">", "value": 300 },
+    "answerable": false
+  },
+  {
+    "id": "q19",
+    "type": "unanswerable",
+    "question": "Which patients have depression and are taking sertraline?",
+    "filters": { "condition": "depression", "drug": "sertraline" },
+    "answerable": false
+  },
+  {
+    "id": "q20",
+    "type": "unanswerable",
+    "question": "Which male patients born in the 1980s have chronic kidney disease?",
+    "filters": { "condition": "chronic kidney disease", "gender": "M", "birth_decade": 1980 },
+    "answerable": false
+  }
+]
