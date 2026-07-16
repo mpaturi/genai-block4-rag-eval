@@ -74,6 +74,14 @@ patients in their ground-truth set — recall is structurally bounded by
 (not attempted here, since spec requires only one changed setting) would
 likely move recall further than threshold tuning alone can.
 
+**Adopted as the new default:** based on this experiment, `0.4` was
+subsequently adopted as `scripts/retrieve.py`'s `DEFAULT_THRESHOLD`,
+replacing the original `0.75` — `0.75` returned zero relevant results for
+every real question tested, which is worse than the precision/fallback
+tradeoff `0.4` introduces. Run 1 and Run 2 above are left as originally
+recorded; they're the documented experiment this file exists to capture,
+not something to retroactively rewrite.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against

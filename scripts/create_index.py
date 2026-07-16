@@ -7,6 +7,7 @@ chunks exist.
 """
 import os
 import sys
+import time
 
 from dotenv import load_dotenv
 from pinecone import Pinecone
@@ -17,6 +18,27 @@ EMBEDDING_MODEL = "llama-text-embed-v2"
 FIELD_MAP = {"text": "chunk_text"}
 CLOUD = "aws"
 REGION = "us-east-1"
+
+POLL_INTERVAL_SECONDS = 2
+POLL_MAX_ATTEMPTS = 15
+
+
+def wait_until_ready(pc: Pinecone, index_name: str):
+    """Polls describe_index() in a bounded loop until status.ready is True,
+    rather than a single fixed sleep - closes the race where a caller
+    (e.g. run_all.py) tries to use the index immediately after creation,
+    before Pinecone has actually finished provisioning it.
+
+    Returns the final IndexDescription either way, so the caller can check
+    readiness itself and decide pass/fail.
+    """
+    for attempt in range(1, POLL_MAX_ATTEMPTS + 1):
+        desc = pc.describe_index(index_name)
+        if desc.status.ready:
+            return desc
+        if attempt < POLL_MAX_ATTEMPTS:
+            time.sleep(POLL_INTERVAL_SECONDS)
+    return desc
 
 
 def main() -> int:
@@ -53,7 +75,15 @@ def main() -> int:
         },
     )
 
-    desc = pc.describe_index(index_name)
+    desc = wait_until_ready(pc, index_name)
+    if not desc.status.ready:
+        print(
+            f"FAIL - index '{index_name}' was created but did not become "
+            f"ready within {POLL_MAX_ATTEMPTS} attempts "
+            f"({POLL_INTERVAL_SECONDS}s apart). Last status: {desc.status.state}"
+        )
+        return 1
+
     print(f"Index '{index_name}' created.")
     print(f"Metric: {desc.metric}")
     if desc.metric in ("cosine", "dotproduct"):

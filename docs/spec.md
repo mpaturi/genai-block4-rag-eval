@@ -354,13 +354,21 @@ time, not from a hardcoded guess baked into this doc:
 - Pinecone embeds the question automatically (same model as ingestion) and
   returns the `top_k` most similar chunks, each with a similarity score
   (0 to 1) and its full metadata
-- **Score threshold: 0.75 (starting default).** If the single best-matching
-  chunk scores below this threshold, retrieval is treated as empty — nothing
-  relevant was found
+- **Score threshold: 0.4 (default, revised from an initial 0.75 in Phase
+  5).** If the single best-matching chunk scores below this threshold,
+  retrieval is treated as empty — nothing relevant was found. The initial
+  0.75 was carried over from Phase 3's self-match check (querying with a
+  chunk's own exact text, which scored 0.82–0.84) — a much easier case
+  than a natural-language question matched against chunk text. Phase 5's
+  eval run showed real question scores cluster ~0.4–0.55, so 0.75 made
+  every question fall back regardless of relevance (0 precision/recall
+  across all 15 answerable questions). See `docs/eval_results.md`'s Run 1
+  vs Run 2 for the measured comparison and `scripts/retrieve.py`'s
+  `DEFAULT_THRESHOLD` for where this lives in code.
 - This threshold is one of the two candidate parameters for the required
-  eval experiment in Phase 5 (the other being `top_k`) — Phase 5 will run
-  the eval at two different values and document which one scores better,
-  rather than treating 0.75 as fixed
+  eval experiment in Phase 5 (the other being `top_k`) — Phase 5 ran the
+  eval at two different values (0.75 and 0.4) and documented which one
+  scores better; 0.4 was subsequently adopted as the new default
 - See Known limitations for why this single threshold does double duty as
   both the relevance gate and the out-of-scope gate.
 - The threshold comparison itself (`score >= threshold`) is pure logic once
@@ -632,13 +640,17 @@ each design section, this is just the index:
 - 200-char chunking threshold is dataset-specific, not general-purpose (see Chunking design)
 - No minimum eval score is enforced (see Eval harness design)
 - Pinecone and Claude failures share one generic error response (see API design)
-- Score threshold (0.75) serves two jobs at once — relevance gating and
-  out-of-scope rejection — which may want different cutoffs; templated
-  summaries sharing clinical vocabulary make it possible for an
-  out-of-scope question to still score above threshold against an
-  unrelated in-scope patient. Not addressed with a second threshold;
-  captured by fallback accuracy and the Phase 5 threshold experiment (see
-  Retrieval design, Eval harness design).
+- Score threshold (0.4, revised from 0.75 — see Retrieval design) serves
+  two jobs at once — relevance gating and out-of-scope rejection — which
+  may want different cutoffs; templated summaries sharing clinical
+  vocabulary make it possible for an out-of-scope question to still score
+  above threshold against an unrelated in-scope patient. This is not just
+  theoretical: `docs/eval_results.md`'s Run 2 shows it happening for real
+  — lowering the threshold to 0.4 caused one deliberately-unanswerable
+  question (chronic kidney disease, outside the whitelist) to incorrectly
+  clear the cutoff and skip the fallback. Not addressed with a second
+  threshold; captured by fallback accuracy and the Phase 5 threshold
+  experiment (see Retrieval design, Eval harness design).
 
 ## Functional requirements
 

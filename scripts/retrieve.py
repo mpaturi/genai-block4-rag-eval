@@ -16,9 +16,13 @@ load_dotenv()
 # per docs/spec.md's Pinecone index design (not a .env variable)
 NAMESPACE = "patients"
 
-# Starting default per docs/spec.md's Retrieval design - confirmed
-# higher-is-better against the real index in Phase 3's self-match check
-DEFAULT_THRESHOLD = 0.75
+# Direction (higher-is-better) confirmed against the real index in Phase
+# 3's self-match check. The value itself was revised in Phase 5, from an
+# initial 0.75 down to 0.4: real natural-language question scores (~0.4-0.55
+# for genuinely relevant matches) never cleared 0.75, which made every
+# question fall back regardless of relevance - see docs/eval_results.md's
+# Run 1 vs Run 2 and docs/spec.md's Retrieval design section.
+DEFAULT_THRESHOLD = 0.4
 DEFAULT_TOP_K = 5
 
 

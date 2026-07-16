@@ -115,13 +115,19 @@ def patients_with_lab_threshold(
     """Keeps each patient's latest reading by date for the given lab,
     mirroring Block 1's "latest value per concept per patient" logic, then
     compares against value using operator (>, >=, <, or <=).
+
+    Sorted by measurement_date then measurement_id (both ascending) - a
+    date-only sort leaves "latest" undefined when a patient has two
+    readings for the same lab on the same date (815 such cases in the
+    real data); measurement_id as a tiebreaker makes the choice
+    deterministic instead of depending on sort-order incidentals.
     """
     concept_id = LAB_CONCEPT_ID.get(lab_name.lower())
     if concept_id is None:
         return set()
     lab_rows = measurements_df[measurements_df["measurement_concept_id"] == concept_id]
     latest = (
-        lab_rows.sort_values("measurement_date")
+        lab_rows.sort_values(["measurement_date", "measurement_id"])
         .groupby("person_id")
         .tail(1)
         .set_index("person_id")["value_as_number"]

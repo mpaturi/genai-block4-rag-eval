@@ -20,7 +20,7 @@ from check_connection import check_anthropic, check_index_name, check_pinecone
 from chunk_records import chunk_all_records
 from ingest import NAMESPACE, RECORDS_PATH
 from ingest import main as run_ingest
-from retrieve import retrieve
+from retrieve import meets_threshold, retrieve
 
 load_dotenv()
 
@@ -115,12 +115,18 @@ def check_idempotency(index) -> bool:
 
 
 def check_sample_query() -> bool:
-    """Confirms a real question returns at least one chunk - the pipeline
-    is queryable end to end, not just that vectors exist in the index."""
+    """Confirms a real question returns at least one chunk that clears the
+    score threshold - what the live API actually promises (a relevant
+    result), not just the weaker guarantee that some chunk came back at
+    all. Uses meets_threshold() the same way run_eval.py does."""
     chunks = retrieve(SAMPLE_QUERY)
-    passed = len(chunks) > 0
+    passed = bool(chunks) and meets_threshold(chunks[0]["score"])
     status = "PASS" if passed else "FAIL"
-    print(f"[{status}] Sample query returned {len(chunks)} chunk(s)")
+    top_score = chunks[0]["score"] if chunks else None
+    print(
+        f"[{status}] Sample query returned {len(chunks)} chunk(s), "
+        f"top score={top_score}"
+    )
     return passed
 
 
