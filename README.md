@@ -44,31 +44,7 @@ Full design reasoning lives in `docs/spec.md`; this file covers setup, architect
 
 ## Architecture
 
-```
-Setup (once):
-check_connection.py -> create_index.py
-
-Ingestion (once, offline):
-data/raw/graph_export.jsonl -> chunk_records.py -> ingest.py -> Pinecone
-
-Query time (per question, via POST /query):
-question -> retrieve.py (Job 1: search Pinecone)
-         -> score >= threshold?
-              yes -> generate.py (Job 2: Claude writes a cited answer)
-              no  -> fixed "I don't know" response (Claude never called)
-         -> api.py wraps both behind FastAPI, returns a clean 502 on
-            Pinecone/Claude failure instead of a stack trace
-
-Eval harness (on demand, not part of the live API or run_all.py):
-data/raw/*.csv -> build_eval_answer_key.py -> ground-truth patient-ID sets
-data/eval/questions.json -------------------> (same builder)
-                                                     |
-                                                     v
-                                          run_eval.py (calls retrieve.py
-                                          only, never Claude) -> precision/
-                                          recall + fallback accuracy ->
-                                          docs/eval_results.md
-```
+![RAG pipeline architecture](docs/rag_pipeline_architecture.svg)
 
 Pinecone uses integrated inference (`llama-text-embed-v2`) — this repo
 never calls a separate embedding API; Pinecone embeds text server-side on
