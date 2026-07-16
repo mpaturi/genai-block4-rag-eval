@@ -333,4 +333,4 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - [x] Run `python scripts/verify.py` — all checks PASS
 - [x] Run `python scripts/run_all.py` — completes end-to-end
 - [x] Write `README.md` (setup, architecture, AI-assisted workflow note)
-- [ ] Commit: `feat(verify): add orchestrator, verification, and README`
+- [x] Commit: `feat(verify): add orchestrator, verification, and README`

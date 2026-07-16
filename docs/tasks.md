@@ -119,7 +119,7 @@ still unmerged (stacked PR), or `main` if it already merged.
 - [x] Run `python scripts/verify.py` — all checks PASS
 - [x] Run `python scripts/run_all.py` — completes end-to-end
 - [x] Write `README.md` (setup, architecture, AI-assisted workflow note)
-- [ ] Commit `scripts/verify.py`, `scripts/run_all.py`, `README.md`
-- [ ] `git push -u origin phase-6-verify-docs`
-- [ ] Open PR6: base `phase-5-eval` (or `main` if PR5 already merged) —
+- [x] Commit `scripts/verify.py`, `scripts/run_all.py`, `README.md`
+- [x] `git push -u origin phase-6-verify-docs`
+- [x] Open PR6: base `phase-5-eval` (or `main` if PR5 already merged) —
       ready for mentor review
