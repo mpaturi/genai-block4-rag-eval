@@ -1,2 +1,121 @@
 # genai-block4-rag-eval
+
 Clinical RAG service — Pinecone retrieval, Claude-generated cited answers, and a precision/recall eval harness.
+
+Full design reasoning lives in `docs/spec.md`; this file covers setup, architecture, and how the project was built.
+
+## Setup
+
+1. Python 3.11, then create and activate a virtual environment.
+2. Install pinned dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Copy the env template and fill in real credentials:
+   ```
+   cp .env.example .env
+   ```
+   Required: `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `ANTHROPIC_API_KEY`.
+4. Run the whole setup-through-verify pipeline with one command:
+   ```
+   python scripts/run_all.py
+   ```
+   This runs, in order: `check_connection` (confirms both API keys work) →
+   `create_index` (creates the Pinecone index if it doesn't exist yet) →
+   `ingest` (chunks `data/raw/graph_export.jsonl` and uploads to Pinecone,
+   deleting and reloading the namespace fresh) → `verify` (confirms
+   credentials, index reachability, chunk count, idempotency, a sample
+   query, and that an eval report exists). It stops immediately if any
+   step fails.
+5. Start the API:
+   ```
+   uvicorn scripts.api:app --reload
+   ```
+   Then `POST /query` with `{"question": "...", "top_k": 5}`.
+6. Run the eval harness separately, on demand (not part of `run_all.py`):
+   ```
+   python scripts/run_eval.py [--top-k N] [--threshold T]
+   ```
+   Results are written to `docs/eval_results.md`.
+7. Run the unit test suite:
+   ```
+   pytest
+   ```
+
+## Architecture
+
+```
+Setup (once):
+check_connection.py -> create_index.py
+
+Ingestion (once, offline):
+data/raw/graph_export.jsonl -> chunk_records.py -> ingest.py -> Pinecone
+
+Query time (per question, via POST /query):
+question -> retrieve.py (Job 1: search Pinecone)
+         -> score >= threshold?
+              yes -> generate.py (Job 2: Claude writes a cited answer)
+              no  -> fixed "I don't know" response (Claude never called)
+         -> api.py wraps both behind FastAPI, returns a clean 502 on
+            Pinecone/Claude failure instead of a stack trace
+
+Eval harness (on demand, not part of the live API or run_all.py):
+data/raw/*.csv -> build_eval_answer_key.py -> ground-truth patient-ID sets
+data/eval/questions.json -------------------> (same builder)
+                                                     |
+                                                     v
+                                          run_eval.py (calls retrieve.py
+                                          only, never Claude) -> precision/
+                                          recall + fallback accuracy ->
+                                          docs/eval_results.md
+```
+
+Pinecone uses integrated inference (`llama-text-embed-v2`) — this repo
+never calls a separate embedding API; Pinecone embeds text server-side on
+both ingest and query.
+
+See `docs/spec.md` for the full reasoning behind every design decision
+(chunking threshold, score threshold, delete-and-reload ingestion,
+micro-averaged eval metrics, etc.), and `docs/eval_results.md` for the
+required parameter experiment and its results.
+
+## Project structure
+
+```
+scripts/    Pipeline code - see docs/spec.md's Architecture section for
+            how each file fits together
+tests/      pytest unit tests for the pure, deterministic logic
+            (chunking, score-threshold decision) - no live API calls
+data/raw/   Source data copied in from Block 1 and Block 3
+data/eval/  Eval question set
+docs/       spec.md, plan.md, tasks.md, eval_results.md
+```
+
+## AI-assisted workflow
+
+This project was built with [Claude Code](https://claude.com/claude-code)
+(Anthropic's CLI) working alongside a human developer, following a
+spec-first workflow: `docs/spec.md` (what and why) was written and
+reviewed before `docs/plan.md` (what to build and in what order) or any
+code. Each phase got its own branch and PR.
+
+Notable practices used throughout:
+- **Test-driven development for pure logic.** `tests/test_chunking.py` and
+  `tests/test_retrieve.py` were written before their corresponding
+  implementation existed, confirmed to fail with the expected error first,
+  then made to pass.
+- **No mocking of external services.** Every script that touches Pinecone
+  or Claude was run against the real APIs during development, not just
+  unit-tested against a mock - including deliberately triggering failure
+  paths (an invalid API key, an empty `chunk_text` string) to confirm
+  actual behavior rather than assuming it.
+- **Empirically confirmed, not assumed, decisions.** For example, whether
+  Pinecone's cosine metric means higher-is-better was confirmed with a
+  real self-match query (Phase 3) rather than trusted from documentation
+  alone; the 0.75 default score threshold was later shown, via the real
+  eval run in `docs/eval_results.md`, to be too high for natural-language
+  questions in practice.
+- **Ground truth computed, not hand-typed.**
+  `scripts/build_eval_answer_key.py` recomputes each eval question's
+  correct-patient-ID set directly from the raw OMOP CSVs with pandas, and
+  asserts the labeling is honest before any score is trusted.

@@ -112,13 +112,13 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 ## Phase 6 — Verify + Docs (`phase-6-verify-docs`, base: `phase-5-eval`)
 
-- [ ] `git checkout phase-5-eval && git checkout -b phase-6-verify-docs`
-- [ ] Create `scripts/verify.py`
-- [ ] Create `scripts/run_all.py` (check_connection → create_index →
+- [x] `git checkout phase-5-eval && git checkout -b phase-6-verify-docs`
+- [x] Create `scripts/verify.py`
+- [x] Create `scripts/run_all.py` (check_connection → create_index →
       chunk+ingest → verify — does not include `run_eval.py`)
-- [ ] Run `python scripts/verify.py` — all checks PASS
-- [ ] Run `python scripts/run_all.py` — completes end-to-end
-- [ ] Write `README.md` (setup, architecture, AI-assisted workflow note)
+- [x] Run `python scripts/verify.py` — all checks PASS
+- [x] Run `python scripts/run_all.py` — completes end-to-end
+- [x] Write `README.md` (setup, architecture, AI-assisted workflow note)
 - [ ] Commit `scripts/verify.py`, `scripts/run_all.py`, `README.md`
 - [ ] `git push -u origin phase-6-verify-docs`
 - [ ] Open PR6: base `phase-5-eval` (or `main` if PR5 already merged) —

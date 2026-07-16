@@ -328,9 +328,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Polls with a bounded retry loop for eventual consistency, not a single
   fixed sleep (see spec's Reproducibility section)
 
-- [ ] Create `scripts/verify.py`
-- [ ] Create `scripts/run_all.py`
-- [ ] Run `python scripts/verify.py` — all checks PASS
-- [ ] Run `python scripts/run_all.py` — completes end-to-end
-- [ ] Write `README.md` (setup, architecture, AI-assisted workflow note)
+- [x] Create `scripts/verify.py`
+- [x] Create `scripts/run_all.py`
+- [x] Run `python scripts/verify.py` — all checks PASS
+- [x] Run `python scripts/run_all.py` — completes end-to-end
+- [x] Write `README.md` (setup, architecture, AI-assisted workflow note)
 - [ ] Commit: `feat(verify): add orchestrator, verification, and README`
