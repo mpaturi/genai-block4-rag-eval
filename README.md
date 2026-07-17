@@ -27,6 +27,11 @@ Full design reasoning lives in `docs/spec.md`; this file covers setup, architect
    credentials, index reachability, chunk count, idempotency, a sample
    query, and that an eval report exists). It stops immediately if any
    step fails.
+
+   Note: this performs a full ingestion **twice** — once from the `ingest`
+   step itself, and again when `verify`'s idempotency check re-runs
+   ingestion to confirm re-running it produces an identical vector count.
+   The longer runtime this causes is expected, not a bug.
 5. Start the API:
    ```
    uvicorn scripts.api:app --reload
