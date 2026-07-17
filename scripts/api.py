@@ -12,12 +12,16 @@ module path with the repo root already on sys.path (it inserts the current
 working directory itself), the opposite situation from `python scripts/x.py`
 direct execution used elsewhere.
 """
+import logging
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
 from scripts.generate import generate_answer
 from scripts.retrieve import meets_threshold, retrieve
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -57,6 +61,11 @@ def query(request: QueryRequest):
         answer = generate_answer(request.question, relevant_chunks)
 
     except Exception as e:
+        # Server logs the real exception - the caller-facing response
+        # deliberately doesn't include it (see below), per spec's API
+        # design: "never returns a raw stack trace to the caller"
+        logger.exception("query failed")
+
         # Pinecone and Claude failures deliberately share one generic
         # response per spec's Known limitations - not distinguished
         return JSONResponse(
