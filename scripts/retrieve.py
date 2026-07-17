@@ -21,6 +21,29 @@ NAMESPACE = "patients"
 DEFAULT_THRESHOLD = 0.75
 DEFAULT_TOP_K = 5
 
+# Lazily built on first retrieve() call and cached here, rather than
+# rebuilt on every call - but NOT at import time, since pc.Index() makes a
+# real network call to resolve the index host. Building it eagerly at
+# import would mean merely importing this module (e.g. to unit-test
+# meets_threshold() with fake scores) requires live credentials and
+# network access, breaking tests/test_retrieve.py's "no live Pinecone call
+# needed" guarantee (see docs/spec.md's Retrieval design).
+_index = None
+
+
+def _get_index():
+    global _index
+    if _index is None:
+        api_key = os.environ.get("PINECONE_API_KEY")
+        index_name = os.environ.get("PINECONE_INDEX_NAME")
+        if not api_key:
+            raise RuntimeError("PINECONE_API_KEY not set in .env")
+        if not index_name:
+            raise RuntimeError("PINECONE_INDEX_NAME not set in .env")
+        pc = Pinecone(api_key=api_key)
+        _index = pc.Index(name=index_name)
+    return _index
+
 
 def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:
     """A chunk scoring exactly at the threshold still counts as a match."""
@@ -34,19 +57,7 @@ def retrieve(question: str, top_k: int = DEFAULT_TOP_K) -> list[dict]:
     score, and full metadata (chunk_text, person_id, etc.) - ranked
     highest score first, same order Pinecone returns.
     """
-    # Validate env vars here, not just in main() - retrieve() is a library
-    # function future scripts (api.py, run_eval.py) will call directly,
-    # without ever going through this file's main()
-    api_key = os.environ.get("PINECONE_API_KEY")
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
-    if not api_key:
-        raise RuntimeError("PINECONE_API_KEY not set in .env")
-    if not index_name:
-        raise RuntimeError("PINECONE_INDEX_NAME not set in .env")
-
-    pc = Pinecone(api_key=api_key)
-    index = pc.Index(name=index_name)
-
+    index = _get_index()
     result = index.search(
         namespace=NAMESPACE, top_k=top_k, inputs={"text": question}
     )
