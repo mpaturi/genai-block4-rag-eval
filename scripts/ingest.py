@@ -53,6 +53,10 @@ def main() -> int:
 
     pc = Pinecone(api_key=api_key)
 
+    if index_name not in pc.list_indexes().names():
+        print(f"FAIL - index '{index_name}' does not exist. Run create_index.py first.")
+        return 1
+
     try:
         index = pc.Index(name=index_name)
     except NotFoundException:
