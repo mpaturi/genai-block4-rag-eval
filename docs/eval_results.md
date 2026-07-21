@@ -5,10 +5,12 @@ evidence for the "documents ≥1 experiment" acceptance criterion — see
 `docs/spec.md`'s Eval harness design section.
 
 All runs below use the same 20-question set in `data/eval/questions.json`
-(15 answerable, 5 deliberately unanswerable); each run's specific `top_k`
-and `threshold` settings are listed in its own heading below. Ground truth
-was independently recomputed by `scripts/build_eval_answer_key.py` and
-spot-checked by hand (see Spot-check section below) before any run.
+(15 answerable, 5 deliberately unanswerable) **except Run 4**, which
+explicitly documents the 16-question subset it uses and why; each run's
+specific `top_k` and `threshold` settings are listed in its own heading
+below. Ground truth was independently recomputed by
+`scripts/build_eval_answer_key.py` and spot-checked by hand (see
+Spot-check section below) before any run.
 
 ## Known limitations
 
@@ -118,6 +120,78 @@ more candidates per question also pulls in more false positives. Fallback
 accuracy is unchanged at 0.800 (`q20` is still the same, sole miss) — as
 expected, since the fallback decision depends only on the single top-ranked
 chunk's score, which `top_k` does not affect.
+
+## Run 4 — experiment: add metadata filters (Phase 7) (`top_k=5`, `threshold=0.4`, filtered)
+
+**Question set:** 16 of the 20 questions in `data/eval/questions.json`, not
+all 20 — `translate_filters()` in `scripts/run_eval.py` excludes 4
+questions whose filters `build_metadata_filter()` cannot represent:
+
+- **q10, q11, q12** (`min_visit_count`): no matching
+  `build_metadata_filter()` parameter exists — visit count isn't one of
+  the filterable fields.
+- **q18** (`lab: "cholesterol"`): `build_metadata_filter()` validates
+  `lab` against a fixed 4-value whitelist (`SBP`/`BMI`/`Glucose`/`HbA1c`)
+  and raises `RAGFilterError` for anything else, by design —
+  `cholesterol` is deliberately outside that whitelist (this is exactly
+  why q18 is one of the 5 unanswerable questions), so it can't be
+  translated at all, not just imperfectly matched.
+
+No question used a non-strict lab operator (`>=`/`<=`) — checked
+empirically against the real file; every lab-threshold question uses
+strict `>`.
+
+**Translation note:** `data/eval/questions.json` predates the Phase 7
+metadata-filter integration and reuses `concepts.py`'s casual condition
+and lab phrasing (e.g. `"type 2 diabetes"`, `"sbp"`), which doesn't match
+Pinecone's stored metadata strings (Block 3's own clinical naming, e.g.
+`"Diabetes mellitus type 2"`, the `"SBP"` `_LAB_PROPERTY` key).
+`scripts/run_eval.py`'s `_CONDITION_NAME_TRANSLATION`/
+`_DRUG_NAME_TRANSLATION`/`_LAB_NAME_TRANSLATION` tables exist to bridge
+that, **scoped to this eval harness only** — this is not a bug or gap in
+`retrieve.py`/`build_metadata_filter()` itself. A real caller (Block 5's
+`graph_tool.py`) already sends the correctly-formatted clinical name
+straight into an exact-match Cypher parameter against Neo4j, which shares
+Block 3's naming with Pinecone — no translation happens on Block 5's side
+either.
+
+| Metric | Filtered (16 Qs) | Unfiltered, same 16 Qs | Run 2 (original 20 Qs, unfiltered) |
+|---|---|---|---|
+| Precision | 1.000 (37/37) | 0.232 (13/56) | 0.197 (14/71) |
+| Recall | 0.287 (37/129) | 0.101 (13/129) | 0.073 (14/192) |
+| Fallback accuracy | 1.000 (4/4) | 0.750 (3/4) | 0.800 (4/5) |
+
+**Baseline:** same `top_k=5`/`threshold=0.4` as Run 2 — filters are the
+only variable changed. Compared primarily against a same-question-subset
+unfiltered control (middle column) rather than Run 2's original totals
+(right column), since Run 2's 192-actual-patient total and 5-question
+fallback set include the 4 questions this run excludes — comparing
+straight against Run 2's published totals would conflate "filters help"
+with "different questions."
+
+**Result:** Adding metadata filters is a large, unambiguous win on this
+subset. Precision jumps from 0.232 to 1.000 — every retrieved chunk is a
+correct patient, because the metadata filter narrows Pinecone's candidate
+set to exact matches (condition/drug/gender/birth_decade/lab-threshold)
+before similarity ranking is even applied, so a wrong-patient chunk has no
+way to be returned. Recall nearly triples (0.101 → 0.287) for the same
+reason recall stayed low in Run 2/3: `top_k=5` still caps how many chunks
+come back per question, but now every one of those 5 slots is a true
+positive instead of mostly noise. Fallback accuracy reaches a perfect
+1.000 (up from 0.750): `q20` (chronic kidney disease, outside the
+condition whitelist) — the same question that broke Run 2's fallback
+accuracy — now correctly falls back, because filtering on
+`condition="chronic kidney disease"` (left untranslated, since it has no
+whitelist entry) matches zero patients, so there's nothing for a lucky
+semantic-score match to ride in on.
+
+**Caveat:** this comparison is not fully apples-to-apples with Run 2/3 —
+it covers a 16-question subset, and its fallback-accuracy denominator (4)
+is smaller than Run 2/3's (5). The precision/recall improvement is real
+(verified against the identical 16 questions, filtered vs. unfiltered, in
+the middle two columns above), but the headline numbers aren't directly
+comparable to Run 1–3's totals without accounting for the excluded
+questions.
 
 ## Spot-check: computed answer keys verified by hand
 
