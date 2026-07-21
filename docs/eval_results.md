@@ -193,6 +193,58 @@ the middle two columns above), but the headline numbers aren't directly
 comparable to Run 1–3's totals without accounting for the excluded
 questions.
 
+## Run 5 — experiment: raise `top_k` to 25, filtered (`top_k=25`, `threshold=0.4`, filtered)
+
+Same 16-question subset and translation tables as Run 4 — see Run 4 for
+why q10–q12 and q18 are excluded and how `scripts/run_eval.py`'s
+`translate_filters()` bridges `questions.json`'s phrasing to Pinecone's
+stored strings. `top_k` is the only variable changed relative to Run 4,
+mirroring Run 3's relationship to Run 2.
+
+| Metric | Filtered, `top_k=25` | Unfiltered, same 16 Qs, `top_k=25` | Run 4 (filtered, `top_k=5`, same 16 Qs) |
+|---|---|---|---|
+| Precision | 1.000 (57/57) | 0.143 (33/230) | 1.000 (37/37) |
+| Recall | 0.442 (57/129) | 0.256 (33/129) | 0.287 (37/129) |
+| Fallback accuracy | 1.000 (4/4) | 0.750 (3/4) | 1.000 (4/4) |
+
+**Precision: held at 1.000, exactly.** Raising `top_k` from 5 to 25 while
+filtered doesn't introduce a single false positive (57/57, same as Run
+4's 37/37) — expected, since the metadata filter narrows Pinecone's
+candidate set to exact matches before ranking, so asking for more results
+just returns more *correct* patients, never wrong ones. This is the one
+metric filtering fixes structurally, independent of `top_k`.
+
+**Recall: a real improvement, from 0.287 to 0.442 (+0.155, ~54% relative)**
+— filtering doesn't just help precision, it lets `top_k` actually matter
+for recall too, the same way Run 3 found for the unfiltered case. But the
+improvement isn't `top_k`-capped either: no included question retrieved
+anywhere close to the full 25 slots (the highest was q01/q02 at 11 of
+25), so the remaining gap to 1.0 recall is the 0.4 score threshold, not
+`top_k` — same conclusion Run 3 reached for the unfiltered case, now
+confirmed to hold with filtering on too. Two questions (q03, q05) reached
+their full per-question answer set (retrieved == actual); most others
+still fall well short (e.g. q08: 2 of 18, q06: 2 of 17), because a
+patient's chunk still has to individually clear 0.4 similarity to the
+question text, filter match or not.
+
+**Fallback accuracy: held at 1.000**, same as Run 4 — `top_k` doesn't
+affect the fallback decision (it depends only on the top-ranked chunk's
+score), so this metric was never expected to move between Run 4 and 5.
+
+**Filtered vs. unfiltered at the same `top_k=25` (left vs. middle
+column):** the same large gap seen at `top_k=5` in Run 4 persists at
+`top_k=25` — precision 1.000 vs. 0.143, recall 0.442 vs. 0.256, fallback
+accuracy 1.000 vs. 0.750. Raising `top_k` helps both filtered and
+unfiltered recall, but filtering remains the dominant factor throughout —
+unfiltered `top_k=25` recall (0.256) still trails filtered `top_k=5`
+recall (0.287, Run 4's right column above), meaning a 5x larger
+unfiltered candidate pool still retrieves fewer correct patients than a
+tightly-filtered pool five times smaller.
+
+**Caveat:** same 16-question-subset caveat as Run 4 — not directly
+comparable to Run 1–3's original 20-question totals without accounting
+for the 4 excluded questions.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against
