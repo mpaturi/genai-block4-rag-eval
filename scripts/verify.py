@@ -15,6 +15,7 @@ import time
 
 from dotenv import load_dotenv
 from pinecone import Pinecone
+from pinecone.exceptions import NotFoundException
 
 from check_connection import check_anthropic, check_index_name, check_pinecone
 from chunk_records import chunk_all_records
@@ -158,7 +159,12 @@ def main() -> int:
         return 1
 
     pc = Pinecone(api_key=api_key)
-    index = pc.Index(name=index_name)
+
+    try:
+        index = pc.Index(name=index_name)
+    except NotFoundException:
+        print(f"[FAIL] Index '{index_name}' does not exist. Run scripts/create_index.py first.")
+        return 1
 
     checks.append(check_index_reachable(index_name))
     checks.append(check_chunk_count(index))
