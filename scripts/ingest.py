@@ -53,14 +53,14 @@ def main() -> int:
 
     pc = Pinecone(api_key=api_key)
 
-    try:
-        index = pc.Index(name=index_name)
-    except NotFoundException:
+    if index_name not in pc.list_indexes().names():
         print(
             f"FAIL - index '{index_name}' does not exist. "
             "Run scripts/create_index.py first."
         )
         return 1
+
+    index = pc.Index(name=index_name)
 
     # Clear the namespace before reloading it fresh. On the very first run
     # the namespace doesn't exist yet, so a missing namespace is treated as

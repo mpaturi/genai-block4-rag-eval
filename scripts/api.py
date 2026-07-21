@@ -12,6 +12,8 @@ module path with the repo root already on sys.path (it inserts the current
 working directory itself), the opposite situation from `python scripts/x.py`
 direct execution used elsewhere.
 """
+import logging
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
@@ -20,6 +22,7 @@ from scripts.generate import generate_answer
 from scripts.retrieve import meets_threshold, retrieve
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 FALLBACK_ANSWER = (
     "I don't know - I couldn't find any patient records relevant to that question."
@@ -57,8 +60,10 @@ def query(request: QueryRequest):
         answer = generate_answer(request.question, relevant_chunks)
 
     except Exception as e:
-        # Pinecone and Claude failures deliberately share one generic
-        # response per spec's Known limitations - not distinguished
+        # Full traceback goes to the server log; the response body stays
+        # generic - Pinecone and Claude failures deliberately share one
+        # generic response per spec's Known limitations, not distinguished
+        logger.exception("query failed")
         return JSONResponse(
             status_code=502,
             content={

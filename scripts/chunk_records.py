@@ -23,7 +23,7 @@ def chunk_text(text: str, max_chars: int = 200) -> list[str]:
     """Pack sentences into chunks of at most max_chars each."""
     # Defensive case: an empty patient record still produces one chunk,
     # so every patient has >=1 chunk (see spec's Chunking design)
-    if text == "":
+    if not text.strip():
         return [EMPTY_TEXT_PLACEHOLDER]
 
     sentences = SENTENCE_BOUNDARY.split(text)
