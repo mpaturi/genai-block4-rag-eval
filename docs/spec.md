@@ -389,6 +389,58 @@ time, not from a hardcoded guess baked into this doc:
   chunk's own text and confirm it comes back as its own best match —
   before any threshold logic is trusted.
 
+## Metadata filter design (Phase 7)
+
+- Adds optional structured filters alongside semantic search: `condition`,
+  `drug`, `lab`+`comparison`+`value`, `gender`, `birth_decade` — these
+  narrow Pinecone's search to chunks whose metadata matches, on top of
+  (not instead of) the existing similarity search and score threshold.
+- Built entirely on metadata already present in the index: Block 3's
+  `conditions`/`drugs` list fields (added in Phase 6's data refresh) plus
+  the existing `gender` and `year_of_birth_band` fields — no new metadata
+  or re-ingestion required.
+- Lab/comparison naming (`_LAB_PROPERTY` mapping `"SBP"/"BMI"/"Glucose"/
+  "HbA1c"` to the stored `latest_*` field names, `_COMPARISON_OP` mapping
+  `"above"/"below"`) matches Block 5's `graph_tool.py` exactly, so both
+  tools present identical shorthand to a caller/agent. The underlying
+  operator differs by necessity: Block 5 emits Cypher `>`/`<`, this emits
+  Pinecone filter operators `$gt`/`$lt` — both strict inequalities, so
+  "above"/"below" mean the same thing (never inclusive) in both tools.
+- Value mapping, not pass-through: `gender` shorthand `"M"`/`"F"` maps to
+  Pinecone's stored `"Male"`/`"Female"`; `birth_decade` (an int, e.g.
+  `1970`) maps to Pinecone's stored `"{decade}s"` string (e.g. `"1970s"`).
+  Passing either field through unmapped would silently match nothing,
+  since Pinecone's stored values never look like `"M"` or `1970`.
+- `lab`, `comparison`, `value` are a trio: either all three are present or
+  all three are absent. A partial combination raises before any Pinecone
+  call — an incomplete lab filter is a caller bug, not a "no filter"
+  fallback. `condition`, `drug`, `gender`, `birth_decade` are each
+  independently optional; any combination, or none, is valid.
+- An unrecognized `lab` or `comparison` value raises before ever calling
+  Pinecone (`.get()` lookups against the fixed whitelists above, never raw
+  indexing) — same fail-fast principle as Block 5's `graph_tool.py`.
+- No filter fields passed → the filter builder returns `None`/empty, and
+  retrieval behaves identically to pre-Phase-7 — existing callers (eval
+  harness, prior API requests) see no behavior change.
+- **Verified against the installed `pinecone` client (v9.1.0), not docs
+  samples, before wiring this up for real** — docs samples mix calling
+  conventions across client versions:
+  - `index.search()` takes `filter` as a flat keyword argument (confirmed
+    from the installed client's own method signature) — no need for the
+    nested `query={"inputs": ..., "top_k": ..., "filter": ...}` form.
+  - Multiple top-level filter keys AND-combine, not OR — confirmed with a
+    live call combining a `conditions` filter, a `gender` filter, and a
+    `latest_sbp` `$gt` filter together; every returned hit satisfied all
+    three simultaneously.
+  - Equality filtering against a list-of-strings metadata field
+    (`conditions`, `drugs`) matches "list contains this value," not
+    literal equality against the whole list — confirmed with a live call:
+    filtering on `conditions: "Essential hypertension"` correctly matched
+    chunks whose `conditions` list held that value alongside others, not
+    only chunks whose list was exactly `["Essential hypertension"]`.
+- Not in scope: forwarding these fields from Block 5's `rag_tool.py` —
+  that's a separate change in the Block 5 repo once this merges.
+
 ## Generation design (Job 2)
 
 - Model: Claude (`claude-haiku-4-5`) — fast and inexpensive, appropriate for
@@ -424,6 +476,25 @@ Request:
 — out-of-range or invalid values return HTTP 422 before Pinecone is ever
 called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.
+
+**Phase 7 — optional metadata filters,** all `None`/absent by default (a
+request with none of these behaves exactly as before Phase 7):
+```json
+{
+  "question": "Which hypertensive men have a high latest SBP?",
+  "condition": "Essential hypertension",
+  "drug": null,
+  "lab": "SBP",
+  "comparison": "above",
+  "value": 140,
+  "gender": "M",
+  "birth_decade": 1970
+}
+```
+`lab`, `comparison`, `value` must be all present or all absent — a partial
+combination returns HTTP 422 before Pinecone is called. `condition`,
+`drug`, `gender`, `birth_decade` are each independently optional. See
+Metadata filter design for the value-mapping and validation details.
 
 Response (relevant results found):
 ```json
@@ -613,8 +684,9 @@ non-deterministic parts, and it matters a lot which is which:
 | 4 | `phase-4-retrieve-generate` | `scripts/retrieve.py`, `scripts/generate.py`, `scripts/api.py`, `tests/test_retrieve.py` |
 | 5 | `phase-5-eval` | `data/raw/condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`, `measurement.csv`, `visit_occurrence.csv` (copied from Block 1, needed only here for ground truth), `scripts/concepts.py` (copied from Block 1, concept-ID mappings for the answer-key builder), `data/eval/questions.json`, `scripts/build_eval_answer_key.py`, `scripts/run_eval.py`, `docs/eval_results.md` (includes the parameter experiment) |
 | 6 | `phase-6-verify-docs` | `scripts/run_all.py`, `scripts/verify.py`, `README.md` |
+| 7 | `phase-7-metadata-filter` | `scripts/retrieve.py` (`build_metadata_filter()`), `scripts/api.py` (new `QueryRequest` fields), `tests/test_retrieve.py` |
 
-Each phase gets its own PR (6 PRs total). `phase-1-spec` branches from
+Each phase gets its own PR (7 PRs total). `phase-1-spec` branches from
 `main`; every phase after that branches from the tip of the previous
 phase's branch rather than `main`, since an earlier phase's PR may not be
 merged yet when the next phase starts — this is what Block 3 actually did.
