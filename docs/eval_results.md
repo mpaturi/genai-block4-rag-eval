@@ -4,10 +4,11 @@ This file is produced by `scripts/run_eval.py` (Phase 5) and is committed as
 evidence for the "documents ≥1 experiment" acceptance criterion — see
 `docs/spec.md`'s Eval harness design section.
 
-Both runs below use `top_k=5` and the 20-question set in
-`data/eval/questions.json` (15 answerable, 5 deliberately unanswerable).
-Ground truth was independently recomputed by `scripts/build_eval_answer_key.py`
-and spot-checked by hand (see Spot-check section below) before either run.
+All runs below use the same 20-question set in `data/eval/questions.json`
+(15 answerable, 5 deliberately unanswerable); each run's specific `top_k`
+and `threshold` settings are listed in its own heading below. Ground truth
+was independently recomputed by `scripts/build_eval_answer_key.py` and
+spot-checked by hand (see Spot-check section below) before any run.
 
 ## Known limitations
 
@@ -81,6 +82,42 @@ every real question tested, which is worse than the precision/fallback
 tradeoff `0.4` introduces. Run 1 and Run 2 above are left as originally
 recorded; they're the documented experiment this file exists to capture,
 not something to retroactively rewrite.
+
+## Run 3 — experiment: raise `top_k` to 25 (`top_k=25`, `threshold=0.4`)
+
+| Metric | Value |
+|---|---|
+| Precision | 0.115 (35/305) |
+| Recall | 0.182 (35/192) |
+| Fallback accuracy | 0.800 (4/5) |
+
+**What changed and why:** `top_k` was raised from 5 to 25, `threshold` held
+at 0.4 (Run 2's value) so `top_k` is the only variable changed relative to
+Run 2. There are 192 correct patients total across the 15 answerable
+questions (~13 per question on average). With `top_k=5`, at most 5 correct
+patients could be retrieved per question, so the theoretical ceiling on
+recall was roughly 75/192 ≈ 0.39 — meaning Run 2's 0.073 recall was partly
+capped by `top_k`, not solely reflecting retrieval quality. `top_k=25` was
+chosen because it's above every question's actual answer-set size (4–22
+patients, per-question), so `top_k` no longer caps any question's recall
+at all — whatever recall results now reflects retrieval quality and the
+threshold, not the `top_k` limit.
+
+**Result:** Recall roughly doubled+ — from 0.073 (Run 2) to 0.182, a real,
+meaningful move, confirming `top_k=5` was indeed a genuine bottleneck in
+Run 2. But recall is still low even with the `top_k` cap effectively
+removed (0.182 is well short of 1.0, and even short of Run 2's own
+75/192≈0.39 theoretical ceiling under the old cap) — so retrieval quality
+and the 0.4 threshold, not `top_k`, are now the dominant remaining limiter.
+The per-question detail confirms this directly: several questions (q06,
+q07, q09, q14) retrieved fewer than 25 chunks even though `top_k=25` was
+requested, because fewer than 25 candidates cleared the 0.4 threshold —
+`top_k` is no longer the constraint for those questions. Precision traded
+off in the other direction, dropping from 0.197 to 0.115, since asking for
+more candidates per question also pulls in more false positives. Fallback
+accuracy is unchanged at 0.800 (`q20` is still the same, sole miss) — as
+expected, since the fallback decision depends only on the single top-ranked
+chunk's score, which `top_k` does not affect.
 
 ## Spot-check: computed answer keys verified by hand
 

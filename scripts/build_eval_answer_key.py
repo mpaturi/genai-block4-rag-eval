@@ -116,6 +116,13 @@ def patients_with_lab_threshold(
     mirroring Block 1's "latest value per concept per patient" logic, then
     compares against value using operator (>, >=, <, or <=).
 
+    Drops non-positive values before picking the latest reading - source
+    data uses -1 as a sentinel for "no reading" and none of the tracked
+    labs can be zero or negative. Matches Block 3's load_measurements
+    logic, which drops these rows for the same reason. Must happen before
+    picking the latest reading, or a patient whose most recent row is a
+    sentinel loses an otherwise-valid earlier reading.
+
     Sorted by measurement_date then measurement_id (both ascending) - a
     date-only sort leaves "latest" undefined when a patient has two
     readings for the same lab on the same date (815 such cases in the
@@ -126,6 +133,7 @@ def patients_with_lab_threshold(
     if concept_id is None:
         return set()
     lab_rows = measurements_df[measurements_df["measurement_concept_id"] == concept_id]
+    lab_rows = lab_rows[lab_rows["value_as_number"] > 0]
     latest = (
         lab_rows.sort_values(["measurement_date", "measurement_id"])
         .groupby("person_id")
