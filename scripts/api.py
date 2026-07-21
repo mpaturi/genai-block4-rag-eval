@@ -12,9 +12,11 @@ module path with the repo root already on sys.path (it inserts the current
 working directory itself), the opposite situation from `python scripts/x.py`
 direct execution used elsewhere.
 """
+from typing import Literal
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from scripts.generate import generate_answer
 from scripts.retrieve import meets_threshold, retrieve
@@ -29,6 +31,15 @@ FALLBACK_ANSWER = (
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
+    # Phase 7 - optional structured metadata filters, all None by default
+    # so a request using none of them behaves exactly as before Phase 7.
+    condition: str | None = None
+    drug: str | None = None
+    lab: str | None = None
+    comparison: Literal["above", "below"] | None = None
+    value: float | None = None
+    gender: Literal["M", "F"] | None = None
+    birth_decade: int | None = None
 
     @field_validator("question")
     @classmethod
@@ -44,11 +55,40 @@ class QueryRequest(BaseModel):
             raise ValueError("top_k must be between 1 and 20")
         return value
 
+    @model_validator(mode="after")
+    def lab_comparison_value_all_or_nothing(self) -> "QueryRequest":
+        # condition/drug/gender/birth_decade are each independently
+        # optional - only this trio must be given together, since a
+        # partial lab filter is ambiguous (see docs/spec.md's Metadata
+        # filter design).
+        lab_args_present = [
+            self.lab is not None,
+            self.comparison is not None,
+            self.value is not None,
+        ]
+        if any(lab_args_present) and not all(lab_args_present):
+            raise ValueError(
+                "lab, comparison, and value must be given together - "
+                f"got lab={self.lab!r}, comparison={self.comparison!r}, "
+                f"value={self.value!r}"
+            )
+        return self
+
 
 @app.post("/query")
 def query(request: QueryRequest):
     try:
-        chunks = retrieve(request.question, top_k=request.top_k)
+        chunks = retrieve(
+            request.question,
+            top_k=request.top_k,
+            condition=request.condition,
+            drug=request.drug,
+            lab=request.lab,
+            comparison=request.comparison,
+            value=request.value,
+            gender=request.gender,
+            birth_decade=request.birth_decade,
+        )
 
         if not chunks or not meets_threshold(chunks[0]["score"]):
             return {"answer": FALLBACK_ANSWER, "sources": [], "retrieved_count": 0}

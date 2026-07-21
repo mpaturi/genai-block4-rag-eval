@@ -31,8 +31,100 @@ def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:
     return score >= threshold
 
 
-def retrieve(question: str, top_k: int = DEFAULT_TOP_K) -> list[dict]:
-    """Search Pinecone for the top_k chunks most similar to question.
+# Naming matches Block 5's graph_tool.py exactly, so both tools present
+# identical filter shorthand to a caller/agent. The operators differ by
+# necessity: Block 5 emits Cypher >/<, this emits Pinecone filter
+# operators - both strict inequalities, so "above"/"below" mean the same
+# thing (never inclusive) in both tools.
+_LAB_PROPERTY = {
+    "SBP": "latest_sbp",
+    "BMI": "latest_bmi",
+    "Glucose": "latest_glucose",
+    "HbA1c": "latest_hba1c",
+}
+_COMPARISON_OP = {"above": "$gt", "below": "$lt"}
+
+# Pinecone's stored metadata uses these full forms, not the eval/API
+# shorthand - gender and birth_decade must be translated before building
+# a filter, never passed through unmapped (see docs/spec.md's Metadata
+# filter design).
+_GENDER_VALUE = {"M": "Male", "F": "Female"}
+
+
+class RAGFilterError(ValueError):
+    """Raised when metadata filter arguments are invalid - an unrecognized
+    lab/comparison/gender, or a partial lab/comparison/value combination.
+    Always raised before any Pinecone call, matching Block 5's
+    graph_tool.py fail-fast principle for the same kind of fixed
+    whitelist lookup.
+    """
+
+
+def build_metadata_filter(
+    condition: str | None = None,
+    drug: str | None = None,
+    lab: str | None = None,
+    comparison: str | None = None,
+    value: float | None = None,
+    gender: str | None = None,
+    birth_decade: int | None = None,
+) -> dict | None:
+    """Builds a Pinecone metadata filter dict from structured arguments.
+
+    Returns None if nothing was passed, so callers doing pure semantic
+    search see no behavior change. lab, comparison, and value must be
+    either all present or all absent - a partial combination raises
+    rather than silently dropping the incomplete filter.
+    """
+    lab_args_present = [lab is not None, comparison is not None, value is not None]
+    if any(lab_args_present) and not all(lab_args_present):
+        raise RAGFilterError(
+            "lab, comparison, and value must be given together - "
+            f"got lab={lab!r}, comparison={comparison!r}, value={value!r}"
+        )
+
+    filter_dict: dict = {}
+
+    if condition is not None:
+        filter_dict["conditions"] = condition
+
+    if drug is not None:
+        filter_dict["drugs"] = drug
+
+    if all(lab_args_present):
+        lab_property = _LAB_PROPERTY.get(lab)
+        if lab_property is None:
+            raise RAGFilterError(f"unrecognized lab: {lab!r}")
+        op = _COMPARISON_OP.get(comparison)
+        if op is None:
+            raise RAGFilterError(f"unrecognized comparison: {comparison!r}")
+        filter_dict[lab_property] = {op: value}
+
+    if gender is not None:
+        gender_value = _GENDER_VALUE.get(gender)
+        if gender_value is None:
+            raise RAGFilterError(f"unrecognized gender: {gender!r}")
+        filter_dict["gender"] = gender_value
+
+    if birth_decade is not None:
+        filter_dict["year_of_birth_band"] = f"{birth_decade}s"
+
+    return filter_dict or None
+
+
+def retrieve(
+    question: str,
+    top_k: int = DEFAULT_TOP_K,
+    condition: str | None = None,
+    drug: str | None = None,
+    lab: str | None = None,
+    comparison: str | None = None,
+    value: float | None = None,
+    gender: str | None = None,
+    birth_decade: int | None = None,
+) -> list[dict]:
+    """Search Pinecone for the top_k chunks most similar to question,
+    optionally narrowed by structured metadata filters (Phase 7).
 
     Returns a list of dicts, each holding the chunk's id, similarity
     score, and full metadata (chunk_text, person_id, etc.) - ranked
@@ -48,12 +140,25 @@ def retrieve(question: str, top_k: int = DEFAULT_TOP_K) -> list[dict]:
     if not index_name:
         raise RuntimeError("PINECONE_INDEX_NAME not set in .env")
 
+    # Raises before any Pinecone call if the filter arguments are invalid
+    metadata_filter = build_metadata_filter(
+        condition=condition,
+        drug=drug,
+        lab=lab,
+        comparison=comparison,
+        value=value,
+        gender=gender,
+        birth_decade=birth_decade,
+    )
+
     pc = Pinecone(api_key=api_key)
     index = pc.Index(name=index_name)
 
-    result = index.search(
-        namespace=NAMESPACE, top_k=top_k, inputs={"text": question}
-    )
+    search_kwargs = {"namespace": NAMESPACE, "top_k": top_k, "inputs": {"text": question}}
+    if metadata_filter:
+        search_kwargs["filter"] = metadata_filter
+
+    result = index.search(**search_kwargs)
 
     chunks = []
     for hit in result.result.hits:
