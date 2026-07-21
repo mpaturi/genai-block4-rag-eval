@@ -112,6 +112,30 @@ def build_metadata_filter(
     return filter_dict or None
 
 
+_index = None
+
+
+def _get_index():
+    """Lazily builds the Pinecone client and index handle on first call,
+    then reuses the same instance on every call after - avoids
+    reconnecting on every retrieve() call. Env-var validation happens
+    here, once, as part of this one-time setup, rather than on every
+    retrieve() call.
+    """
+    global _index
+    if _index is None:
+        api_key = os.environ.get("PINECONE_API_KEY")
+        index_name = os.environ.get("PINECONE_INDEX_NAME")
+        if not api_key:
+            raise RuntimeError("PINECONE_API_KEY not set in .env")
+        if not index_name:
+            raise RuntimeError("PINECONE_INDEX_NAME not set in .env")
+
+        pc = Pinecone(api_key=api_key)
+        _index = pc.Index(name=index_name)
+    return _index
+
+
 def retrieve(
     question: str,
     top_k: int = DEFAULT_TOP_K,
@@ -130,16 +154,6 @@ def retrieve(
     score, and full metadata (chunk_text, person_id, etc.) - ranked
     highest score first, same order Pinecone returns.
     """
-    # Validate env vars here, not just in main() - retrieve() is a library
-    # function future scripts (api.py, run_eval.py) will call directly,
-    # without ever going through this file's main()
-    api_key = os.environ.get("PINECONE_API_KEY")
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
-    if not api_key:
-        raise RuntimeError("PINECONE_API_KEY not set in .env")
-    if not index_name:
-        raise RuntimeError("PINECONE_INDEX_NAME not set in .env")
-
     # Raises before any Pinecone call if the filter arguments are invalid
     metadata_filter = build_metadata_filter(
         condition=condition,
@@ -151,8 +165,7 @@ def retrieve(
         birth_decade=birth_decade,
     )
 
-    pc = Pinecone(api_key=api_key)
-    index = pc.Index(name=index_name)
+    index = _get_index()
 
     search_kwargs = {"namespace": NAMESPACE, "top_k": top_k, "inputs": {"text": question}}
     if metadata_filter:
