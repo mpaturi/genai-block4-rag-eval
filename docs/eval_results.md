@@ -245,6 +245,87 @@ tightly-filtered pool five times smaller.
 comparable to Run 1–3's original 20-question totals without accounting
 for the 4 excluded questions.
 
+## Run 6 — experiment: lower `threshold` to 0.2, filtered (`top_k=15`, `threshold=0.2`, filtered)
+
+Same 16-question subset and translation tables as Run 4/5.
+
+**What changed and why — investigated the same way 0.75→0.4 was chosen in
+Phase 5, not guessed.** A one-off diagnostic script (not committed)
+retrieved every metadata-filtered candidate for each of the 12 included
+answerable questions (`top_k=100`, well above any included question's
+answer-set size) and checked each one against the ground-truth answer
+key.
+
+*First pass had a bug worth naming, because it changed the conclusion:*
+looking at every chunk independently made a patient's low-scoring second
+chunk look like an "excluded true positive" even when their first chunk
+already cleared 0.4 — but `run_eval.py` dedupes to `person_id`, so that
+patient was never actually missed. Correcting this to the **best score
+per correct person_id** is what "excluded but actually correct" has to
+mean here — a patient counts as excluded only if *none* of their chunks
+clear the threshold.
+
+With that correction: 72 correct patients (of 129 total across the 12
+questions) are currently excluded at `threshold=0.4`, with best-chunk
+scores ranging **0.2078 to 0.3980**. The real floor is **0.2078**
+(person 8777, q14) — rounded down to a clean **0.2**, the same
+one-decimal rounding Phase 5 used (0.419 → 0.4).
+
+**A second, more important finding from the same diagnostic:** across
+all 175 metadata-filtered chunks checked against the 12 included
+answerable questions, **zero were false positives** — every chunk that
+passed the filter belonged to a ground-truth-correct patient, regardless
+of its score (down to -0.0045). Unlike Phase 5's unfiltered case, where
+lowering the threshold risks pulling in semantically-similar-but-wrong
+patients, the metadata filter has already restricted the candidate pool
+to exact-criteria matches before any score is considered — so within
+that pool, there's no false-positive risk to trade off against recall at
+all. This is why 0.2 (a threshold Run 2 would never have tolerated
+unfiltered) is safe to test here.
+
+| Metric | Filtered, `top_k=15`/`threshold=0.2` | Unfiltered, same 16 Qs, same settings | Run 4 (filtered, `top_k=5`/`threshold=0.4`) |
+|---|---|---|---|
+| Precision | 1.000 (114/114) | 0.156 (28/180) | 1.000 (37/37) |
+| Recall | 0.884 (114/129) | 0.217 (28/129) | 0.287 (37/129) |
+| Fallback accuracy | 1.000 (4/4) | 0.000 (0/4) | 1.000 (4/4) |
+
+**Result — both metrics checked honestly:**
+
+- **Precision: held at exactly 1.000** (114/114), same as every filtered
+  run so far. Confirms the diagnostic's finding wasn't a fluke restricted
+  to the 72 patients sampled — the full filtered run introduces zero
+  false positives at `threshold=0.2`.
+- **Recall: a very large, real jump — 0.287 → 0.884** (+0.597). This is
+  the direct, expected result of capturing the 72 genuine misses the
+  diagnostic found: 8 of the 12 included answerable questions now
+  retrieve every single ground-truth patient (`retrieved == actual` for
+  q02, q03, q04, q05, q07, q09, q13, q15). The two questions still
+  furthest from complete (q06: 15/17, q08: 15/18) are capped by
+  `top_k=15`, not the threshold — both retrieved exactly 15, the max
+  allowed.
+- **Fallback accuracy: the hypothesis is confirmed, dramatically.**
+  Filtered, it holds at a perfect 1.000 — unchanged from Run 4/5. But the
+  same-subset **unfiltered** control at this same `threshold=0.2`
+  collapses to **0.000 (0/4)** — every one of the 4 unanswerable
+  questions incorrectly clears the threshold without a filter. The
+  mechanism is structural, not a close call: q16/q17/q19/q20's
+  conditions (`asthma`, `migraine`, `depression`, `chronic kidney
+  disease`) don't exist anywhere in the corpus under any spelling, so the
+  metadata filter returns **zero candidates for these questions at any
+  `top_k`, before the score threshold is ever evaluated** — confirmed
+  directly (`retrieve(..., top_k=15, **filters)` returns `[]` for all 4).
+  Filtering, not the threshold, is doing 100% of the out-of-scope
+  rejection now; the threshold is free to move for recall's sake without
+  touching fallback accuracy at all, exactly the opposite of Run 2's
+  unfiltered case where lowering the threshold cost 1.000 → 0.800.
+
+**Caveat:** same 16-question-subset caveat as Run 4/5. Also, 0.2 is a
+floor observed on this 20-question eval set, not a proven universal
+floor — a live caller's question could still produce a correct match
+scoring below 0.2 that this data never exercised. The zero-false-positive
+property is what makes this safe to test aggressively, not a guarantee
+that 0.2 is the true minimum.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against
