@@ -131,17 +131,17 @@ still unmerged (stacked PR), or `main` if it already merged.
       `filter` is a flat kwarg on `index.search()`, multiple filter keys
       AND-combine, and equality on a list-of-strings field matches
       "contains" — confirmed with live calls against the real index
-- [ ] Add `_LAB_PROPERTY`/`_COMPARISON_OP`/`_GENDER_VALUE` and
+- [x] Add `_LAB_PROPERTY`/`_COMPARISON_OP`/`_GENDER_VALUE` and
       `build_metadata_filter()` to `scripts/retrieve.py`, naming matched
       exactly to Block 5's `graph_tool.py`
-- [ ] Extend `retrieve()`'s signature with the optional filter fields;
+- [x] Extend `retrieve()`'s signature with the optional filter fields;
       unfiltered calls must behave identically to before this phase
-- [ ] Add unit tests for `build_metadata_filter()` to
+- [x] Add unit tests for `build_metadata_filter()` to
       `tests/test_retrieve.py` (pure logic, no live Pinecone call)
-- [ ] `pytest tests/test_retrieve.py` — all pass
-- [ ] Add the same optional fields to `scripts/api.py`'s `QueryRequest`,
+- [x] `pytest tests/test_retrieve.py` — all pass
+- [x] Add the same optional fields to `scripts/api.py`'s `QueryRequest`,
       with the lab/comparison/value all-or-nothing validator
-- [ ] Run the full test suite — confirm nothing else broke
-- [ ] Commit `scripts/retrieve.py`, `scripts/api.py`, `tests/test_retrieve.py`
+- [x] Run the full test suite — confirm nothing else broke
+- [x] Commit `scripts/retrieve.py`, `scripts/api.py`, `tests/test_retrieve.py`
 - [ ] `git push -u origin phase-7-metadata-filter`
 - [ ] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already merged)
