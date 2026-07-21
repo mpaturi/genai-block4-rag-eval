@@ -97,6 +97,11 @@ def test_build_metadata_filter_unrecognized_comparison_raises_before_pinecone():
         build_metadata_filter(lab="SBP", comparison="equal", value=140)
 
 
+def test_build_metadata_filter_unrecognized_gender_raises_before_pinecone():
+    with pytest.raises(RAGFilterError):
+        build_metadata_filter(gender="X")
+
+
 def test_build_metadata_filter_partial_lab_combo_raises():
     with pytest.raises(RAGFilterError):
         build_metadata_filter(lab="SBP")
