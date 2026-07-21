@@ -23,7 +23,15 @@ NAMESPACE = "patients"
 # question fall back regardless of relevance - see docs/eval_results.md's
 # Run 1 vs Run 2 and docs/spec.md's Retrieval design section.
 DEFAULT_THRESHOLD = 0.4
-DEFAULT_TOP_K = 5
+
+# Revised in Phase 7 from an initial 5: the filtered eval (Run 5,
+# top_k=25, threshold=0.4) showed the highest per-question `retrieved`
+# count actually observed across all 12 answerable questions in the
+# 16-question filtered subset was 11 (q01 and q02) - every other question
+# retrieved fewer. 15 gives roughly a 36% margin above that measured
+# ceiling, since the 20-question eval set doesn't cover the full range of
+# what a live caller might ask - see docs/eval_results.md's Run 5.
+DEFAULT_TOP_K = 15
 
 
 def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:

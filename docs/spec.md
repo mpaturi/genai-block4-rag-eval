@@ -350,7 +350,15 @@ time, not from a hardcoded guess baked into this doc:
 
 ## Retrieval design (Job 1)
 
-- Input: a question string, optional `top_k` (default 5)
+- Input: a question string, optional `top_k` (default 15, revised from an
+  initial 5 in Phase 7). Phase 7's filtered eval (Run 5, `top_k=25`,
+  `threshold=0.4`) measured the highest per-question `retrieved` count
+  actually observed across all 12 answerable questions in the filtered
+  eval subset at 11 (q01 and q02) — every other question retrieved fewer.
+  15 gives roughly a 36% margin above that measured ceiling, since the
+  20-question eval set doesn't cover the full range of what a live caller
+  might ask. See `docs/eval_results.md`'s Run 5 and
+  `scripts/retrieve.py`'s `DEFAULT_TOP_K` for where this lives in code.
 - Pinecone embeds the question automatically (same model as ingestion) and
   returns the `top_k` most similar chunks, each with a similarity score
   (0 to 1) and its full metadata
@@ -470,9 +478,9 @@ Block 4 to consume.
 
 Request:
 ```json
-{ "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 5 }
+{ "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 15 }
 ```
-`top_k` is optional (default 5), validated to an integer between 1 and 20
+`top_k` is optional (default 15), validated to an integer between 1 and 20
 — out-of-range or invalid values return HTTP 422 before Pinecone is ever
 called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.

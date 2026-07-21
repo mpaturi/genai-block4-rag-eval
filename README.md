@@ -36,7 +36,7 @@ Full design reasoning lives in `docs/spec.md`; this file covers setup, architect
    ```
    uvicorn scripts.api:app --reload
    ```
-   Then `POST /query` with `{"question": "...", "top_k": 5}`.
+   Then `POST /query` with `{"question": "...", "top_k": 15}`.
 6. Run the eval harness separately, on demand (not part of `run_all.py`):
    ```
    python scripts/run_eval.py [--top-k N] [--threshold T]
