@@ -22,7 +22,7 @@ import json
 import sys
 
 from build_eval_answer_key import QUESTIONS_PATH, build_answer_key, load_data
-from retrieve import DEFAULT_THRESHOLD, DEFAULT_TOP_K, meets_threshold, retrieve, select_threshold
+from retrieve import DEFAULT_THRESHOLD, DEFAULT_TOP_K, PERMISSIVE_THRESHOLD, meets_threshold, retrieve
 
 # Phase 7 filtered-eval mode only: questions.json predates the metadata-
 # filter integration and reuses concepts.py's casual/lowercase condition
@@ -117,6 +117,7 @@ def run_eval(
     threshold: float = DEFAULT_THRESHOLD,
     filtered: bool = False,
     conditional_threshold: bool = False,
+    permissive_threshold_override: float | None = None,
 ) -> dict:
     """Runs every question's text through retrieve(), scores it against
     answer_key, and returns aggregated metrics plus per-question detail.
@@ -134,11 +135,21 @@ def run_eval(
     in the returned "excluded_ids".
 
     conditional_threshold=True (Phase 7, Run 8) additionally computes
-    each question's own threshold via select_threshold() from its
-    translated condition/drug filters, matching scripts/api.py's live
-    per-request behavior, instead of using the single flat `threshold`
-    for every question. Only valid alongside filtered=True - the caller
-    (main()) enforces this before run_eval() is ever called.
+    each question's own threshold using the same condition/drug-present
+    decision rule as scripts/retrieve.py's select_threshold() - matching
+    scripts/api.py's live per-request behavior - instead of using the
+    single flat `threshold` for every question. Only valid alongside
+    filtered=True - the caller (main()) enforces this before run_eval()
+    is ever called.
+
+    permissive_threshold_override (Run 10, exploratory only) substitutes
+    a candidate value for PERMISSIVE_THRESHOLD when computing
+    condition/drug-filtered questions' threshold. The override is applied
+    locally, here, in a copy of select_threshold()'s decision rule -
+    select_threshold() itself and retrieve.py's actual PERMISSIVE_THRESHOLD
+    constant (the production values scripts/api.py calls) are never
+    touched. Demographic-only questions are unaffected: they still always
+    get DEFAULT_THRESHOLD. Only valid alongside conditional_threshold=True.
     """
     total_correct = 0
     total_retrieved = 0
@@ -160,9 +171,17 @@ def run_eval(
         chunks = retrieve(question["question"], top_k=top_k, **filter_kwargs)
 
         if conditional_threshold:
-            question_threshold = select_threshold(
-                condition=filter_kwargs.get("condition"), drug=filter_kwargs.get("drug")
+            has_cond_or_drug = (
+                filter_kwargs.get("condition") is not None or filter_kwargs.get("drug") is not None
             )
+            if has_cond_or_drug:
+                question_threshold = (
+                    permissive_threshold_override
+                    if permissive_threshold_override is not None
+                    else PERMISSIVE_THRESHOLD
+                )
+            else:
+                question_threshold = DEFAULT_THRESHOLD
         else:
             question_threshold = threshold
 
@@ -215,6 +234,7 @@ def run_eval(
         "threshold": threshold,
         "filtered": filtered,
         "conditional_threshold": conditional_threshold,
+        "permissive_threshold_override": permissive_threshold_override,
         "precision": precision,
         "recall": recall,
         "fallback_accuracy": fallback_accuracy,
@@ -231,7 +251,8 @@ def run_eval(
 def print_report(metrics: dict) -> None:
     print(
         f"top_k={metrics['top_k']}  threshold={metrics['threshold']}  "
-        f"filtered={metrics['filtered']}  conditional_threshold={metrics['conditional_threshold']}\n"
+        f"filtered={metrics['filtered']}  conditional_threshold={metrics['conditional_threshold']}  "
+        f"permissive_threshold_override={metrics['permissive_threshold_override']}\n"
     )
     print(
         f"  Precision:         {metrics['precision']:.3f}  "
@@ -277,10 +298,23 @@ def main() -> int:
         "filters - matching scripts/api.py's live per-request behavior "
         "instead of a fixed value for the whole run.",
     )
+    parser.add_argument(
+        "--permissive-threshold",
+        type=float,
+        default=None,
+        help="Only valid with --conditional-threshold. Overrides the "
+        "PERMISSIVE_THRESHOLD value used for condition/drug-filtered "
+        "questions specifically (demographic-only questions are unaffected - "
+        "they always use DEFAULT_THRESHOLD). Lets us test candidate floor "
+        "values below retrieve.py's shipped 0.2 without changing the "
+        "production constant.",
+    )
     args = parser.parse_args()
 
     if args.conditional_threshold and not args.filtered:
         parser.error("--conditional-threshold requires --filtered")
+    if args.permissive_threshold is not None and not args.conditional_threshold:
+        parser.error("--permissive-threshold requires --conditional-threshold")
 
     with open(QUESTIONS_PATH) as f:
         questions = json.load(f)
@@ -299,6 +333,7 @@ def main() -> int:
         threshold=args.threshold,
         filtered=args.filtered,
         conditional_threshold=args.conditional_threshold,
+        permissive_threshold_override=args.permissive_threshold,
     )
     print_report(metrics)
     return 0

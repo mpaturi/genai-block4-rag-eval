@@ -554,6 +554,124 @@ from a condition/drug-filtered query: the permissive 0.2 threshold and a
 `top_k` sized to Run 7's measured ceiling under that threshold, not
 Run 5's older, stricter-threshold measurement.
 
+## Run 10 — exploratory: is `PERMISSIVE_THRESHOLD` (0.2) actually the safe floor? (`top_k=20`, `--filtered --conditional-threshold`, `--permissive-threshold` swept)
+
+**This is an exploratory experiment, not a proposal to ship a new
+default.** `scripts/retrieve.py`'s `PERMISSIVE_THRESHOLD` (0.2) was
+chosen in Run 6 because it was the *lowest score observed* among
+correct-but-excluded patients in that diagnostic — not because anything
+proved 0.2 is the true safe floor. Run 6's diagnostic checked every
+condition/drug-filtered chunk against ground truth at every score, down
+to slightly negative values (-0.0045), and found **zero false
+positives** — every chunk that passed a condition/drug filter was
+genuinely correct regardless of score. Run 7 showed q14 still misses 3
+correct patients at `threshold=0.2` in a way that looked
+threshold-bound, not `top_k`-bound (`retrieved=14 < top_k=20`) —
+suggesting a lower floor might recover them. This run tests that
+directly, via a new `run_eval.py --permissive-threshold` override that
+substitutes a candidate value for `PERMISSIVE_THRESHOLD` on
+condition/drug-filtered questions only, without touching
+`scripts/retrieve.py`'s actual constant or `select_threshold()`.
+Demographic-only questions (q21/q22) are unaffected by the override —
+they always get `DEFAULT_THRESHOLD` regardless.
+
+**Sanity check first:** the unset-override run reproduced Run 9's
+numbers exactly (150/150 correct/retrieved, 937 actual, every
+per-question value identical) before any of the candidate floors were
+trusted.
+
+### Original 16 condition/drug-filtered questions only (q21/q22 excluded — see below)
+
+| `--permissive-threshold` | Precision | Recall | Fallback accuracy |
+|---|---|---|---|
+| 0.2 (unset — shipped default) | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+| 0.1 | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+| 0.0 | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+| -0.01 | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+
+**The honest headline: all four rows are identical.** Not "precision
+held, recall improved slightly" — every single per-question
+retrieved/correct value was byte-for-byte the same at 0.2, 0.1, 0.0, and
+-0.01. This directly contradicts the hypothesis that q14's gap (and any
+other slack) was threshold-bound and would close as the floor dropped.
+
+### q14, investigated with Run 6's rigor — why nothing moved
+
+q14 stayed at **retrieved=14, correct=14, actual=17 at every tested
+value**, no exceptions. Investigated directly rather than just reporting
+the null result:
+
+- At `top_k=20`, `retrieve()`'s Pinecone fetch is truncated **by score
+  rank before any threshold filtering happens.** For q14's filtered
+  candidate pool (28 chunks total, confirmed via an unbounded
+  `top_k=100` fetch — the same pool size Run 6's original diagnostic
+  saw), the 20th-best chunk already scores **0.2348** — above every
+  value tested (0.2, 0.1, 0.0, -0.01). The lower-scoring chunks that
+  Run 6's diagnostic found simply never reach `run_eval.py`'s threshold
+  check at all at this `top_k` — there's nothing for a lower threshold
+  to include.
+- The 3 missing patients, identified directly: **person 3024 (best
+  score 0.2338), person 5127 (0.2334), person 8777 (0.2078).** Two of
+  the three (3024, 5127) score *above* even the shipped 0.2 threshold —
+  they would already count as matches if only they were fetched. All
+  three are excluded purely because 20 other chunks in the pool
+  outscore them, not because their own score falls below whatever
+  threshold was tested.
+- Part of why the pool fills up before reaching them: 7 of the 20
+  chunks actually returned are second chunks (`_chunk1`) of a patient
+  whose first chunk (`_chunk0`) is already in the same top-20 list —
+  `retrieved_ids` dedupes these to the same person, so real `top_k`
+  headroom for *new* patients is smaller than 20 suggests.
+- **Conclusion: q14's remaining gap is capped by `top_k=20`, not by
+  `PERMISSIVE_THRESHOLD`.** Run 7's framing ("not top_k-capped" because
+  `retrieved(14) < top_k(20)`) was incomplete — that comparison is at
+  the deduped-person level, but the underlying chunk fetch is still
+  `top_k`-limited before dedup, and that's what's actually blocking
+  these 3 patients.
+
+### Precision — held at 1.000, but for a different reason than expected
+
+Precision didn't hold at 1.000 across four independently-tested
+threshold values proving no false positives creep in as the floor drops.
+It held because **the retrieved chunk sets were completely identical at
+every tested value** — the experiment, as run at `top_k=20`, never
+actually exercised a lower threshold's filtering behavior for any of
+the 12 included questions. Run 6's original zero-false-positive finding
+(checked against a much larger, unbounded candidate pool) is still the
+real evidence that a lower floor wouldn't introduce false positives —
+this run doesn't add new evidence on that question, because nothing
+below the `top_k=20` cutoff score was ever evaluated against any
+threshold here.
+
+### q21/q22 — confirmed unaffected at every value
+
+Identical to Run 9 across all four override values, exactly as
+expected (`--permissive-threshold` only touches condition/drug-filtered
+questions): q21 `retrieved=4, correct=4, actual=128`; q22
+`retrieved=20, correct=20, actual=680`.
+
+### Verdict
+
+**This experiment could not test what it set out to test, at
+`top_k=20`.** Every candidate floor from 0.2 down to -0.01 produced
+byte-identical retrieval results, because `top_k=20` — not
+`PERMISSIVE_THRESHOLD` — is the actual binding constraint on the one
+question (q14) with any remaining gap in this question set. Lowering
+`PERMISSIVE_THRESHOLD` below 0.2 would have **zero measurable effect in
+the current production configuration** — not because 0.2 is already the
+optimal floor, but because the candidate pool never gets deep enough
+for a lower floor to matter until `top_k` is also raised. Genuinely
+testing whether a lower floor helps would need a much larger `top_k`
+(e.g. matching Run 6's original `top_k=100` diagnostic setup) — a
+different experiment than the one requested here.
+
+**`scripts/retrieve.py`'s `PERMISSIVE_THRESHOLD` constant was left
+unchanged (0.2)**, as instructed — this task documents the experiment,
+including its most important finding (that it couldn't test the thing
+it was designed to test at the shipped `top_k`), not a recommendation.
+Whether to adopt a new `PERMISSIVE_THRESHOLD`, and whether that decision
+should also revisit `top_k`, is a separate decision left to the user.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against

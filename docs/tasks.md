@@ -258,3 +258,26 @@ was safe specifically for those two filter types.
       explanation, not a contradiction); confirm q22 moved by exactly
       the `top_k` increase, still structurally capped by its 680-patient
       ground-truth size
+
+**Run 10 — exploratory: sweep `PERMISSIVE_THRESHOLD` candidate floors
+(0.2/0.1/0.0/-0.01):**
+
+- [x] Add `run_eval.py --permissive-threshold` override (requires
+      `--conditional-threshold`) — substitutes a candidate floor for
+      condition/drug-filtered questions only, applied locally in
+      `run_eval.py`, without modifying `select_threshold()` or
+      `scripts/retrieve.py`'s actual `PERMISSIVE_THRESHOLD` constant
+- [x] Sanity-check the unset-override run reproduces Run 9 exactly
+      before trusting the swept values
+- [x] Run all four candidate floors and document as Run 10 in
+      `docs/eval_results.md`
+- [x] Report the real result honestly, including that it contradicted
+      the stated hypothesis: all four floors produced byte-identical
+      output, because `top_k=20` truncates the candidate pool by score
+      rank before threshold filtering ever runs — q14's remaining gap is
+      `top_k`-bound, not threshold-bound, traced to the exact 3 missing
+      patients and their true scores (2 of which already clear 0.2)
+- [x] **`scripts/retrieve.py`'s `PERMISSIVE_THRESHOLD` constant left
+      unchanged (0.2)** — this task documents the experiment only;
+      adopting a new value (and whether that decision should also
+      revisit `top_k`) is a separate decision left to the user
