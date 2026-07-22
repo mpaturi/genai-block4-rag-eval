@@ -24,6 +24,16 @@ NAMESPACE = "patients"
 # Run 1 vs Run 2 and docs/spec.md's Retrieval design section.
 DEFAULT_THRESHOLD = 0.4
 
+# Phase 7's Run 6 (docs/eval_results.md) measured that dropping the
+# threshold to 0.2 while a condition/drug metadata filter is active
+# raises recall from 0.287 to 0.884 with fallback accuracy holding at a
+# perfect 1.000 - safe specifically because a condition/drug filter can
+# structurally return zero candidates for an untracked topic (e.g.
+# condition="Asthma" matches nobody, full stop). The same 0.2 threshold
+# with no filter collapses fallback accuracy to 0.000 (Run 6's unfiltered
+# control) - see select_threshold() below for where this is applied.
+PERMISSIVE_THRESHOLD = 0.2
+
 # Revised in Phase 7 from an initial 5: the filtered eval (Run 5,
 # top_k=25, threshold=0.4) showed the highest per-question `retrieved`
 # count actually observed across all 12 answerable questions in the
@@ -37,6 +47,22 @@ DEFAULT_TOP_K = 15
 def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:
     """A chunk scoring exactly at the threshold still counts as a match."""
     return score >= threshold
+
+
+def select_threshold(*, condition: str | None = None, drug: str | None = None) -> float:
+    """Picks the score threshold for a query. Returns PERMISSIVE_THRESHOLD
+    only when a condition or drug filter is present - those are the only
+    filter types that can structurally return zero patients for an
+    untracked topic (e.g. condition="Asthma" matches nobody, full stop),
+    which is what makes a lower threshold safe. gender/lab/birth_decade
+    filters provide no such protection - an off-topic question paired
+    with e.g. a gender-only filter would still return a pile of unrelated
+    patients, so it must not lower the bar for what counts as a match.
+    See Run 6 in docs/eval_results.md for the measured evidence.
+    """
+    if condition is not None or drug is not None:
+        return PERMISSIVE_THRESHOLD
+    return DEFAULT_THRESHOLD
 
 
 # Naming matches Block 5's graph_tool.py exactly, so both tools present

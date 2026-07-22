@@ -377,6 +377,16 @@ time, not from a hardcoded guess baked into this doc:
   eval experiment in Phase 5 (the other being `top_k`) — Phase 5 ran the
   eval at two different values (0.75 and 0.4) and documented which one
   scores better; 0.4 was subsequently adopted as the new default
+- **Permissive threshold for condition/drug-filtered queries (Phase 7).**
+  `scripts/api.py`'s `/query` handler no longer always uses
+  `DEFAULT_THRESHOLD` — it computes the threshold per request via
+  `scripts/retrieve.py`'s `select_threshold(condition=..., drug=...)`,
+  which returns `PERMISSIVE_THRESHOLD` (0.2) whenever a `condition` or
+  `drug` filter is present, and `DEFAULT_THRESHOLD` (0.4) otherwise. Both
+  the fallback check and the `relevant_chunks` filter use the same
+  computed threshold. See Known limitations for why only `condition`/
+  `drug` (not `gender`/`lab`/`birth_decade`) can safely trigger this, and
+  `docs/eval_results.md`'s Run 6 for the measured evidence.
 - See Known limitations for why this single threshold does double duty as
   both the relevance gate and the out-of-scope gate.
 - The threshold comparison itself (`score >= threshold`) is pure logic once
@@ -720,17 +730,32 @@ each design section, this is just the index:
 - 200-char chunking threshold is dataset-specific, not general-purpose (see Chunking design)
 - No minimum eval score is enforced (see Eval harness design)
 - Pinecone and Claude failures share one generic error response (see API design)
-- Score threshold (0.4, revised from 0.75 — see Retrieval design) serves
-  two jobs at once — relevance gating and out-of-scope rejection — which
-  may want different cutoffs; templated summaries sharing clinical
-  vocabulary make it possible for an out-of-scope question to still score
-  above threshold against an unrelated in-scope patient. This is not just
-  theoretical: `docs/eval_results.md`'s Run 2 shows it happening for real
-  — lowering the threshold to 0.4 caused one deliberately-unanswerable
+- Score threshold serves two jobs at once — relevance gating and
+  out-of-scope rejection — which may want different cutoffs; templated
+  summaries sharing clinical vocabulary make it possible for an
+  out-of-scope question to still score above threshold against an
+  unrelated in-scope patient. This is not just theoretical:
+  `docs/eval_results.md`'s Run 2 shows it happening for real — lowering
+  the unfiltered threshold to 0.4 caused one deliberately-unanswerable
   question (chronic kidney disease, outside the whitelist) to incorrectly
-  clear the cutoff and skip the fallback. Not addressed with a second
-  threshold; captured by fallback accuracy and the Phase 5 threshold
-  experiment (see Retrieval design, Eval harness design).
+  clear the cutoff and skip the fallback. **Partially addressed in Phase
+  7:** `scripts/retrieve.py`'s `select_threshold()` now uses a second,
+  more permissive threshold (`PERMISSIVE_THRESHOLD = 0.2`) whenever a
+  `condition` or `drug` metadata filter is present, since only those two
+  filter types can structurally return zero candidates for an untracked
+  topic (a `condition`/`drug` value outside the corpus simply matches no
+  patient, filter or no filter) — `gender`/`lab`/`birth_decade` filters
+  give no such protection and always keep the stricter default. Run 6
+  (`docs/eval_results.md`) is the measured evidence: the same 0.2
+  threshold raises filtered recall from 0.287 to 0.884 with fallback
+  accuracy holding at 1.000, while the identical 0.2 threshold with no
+  filter collapses fallback accuracy to 0.000. This is a scoped fix, not
+  a complete one — an off-topic question paired with a condition/drug
+  filter that happens to share vocabulary with a real, tracked condition
+  (e.g. asking about "diabetes symptoms" while filtering on
+  `condition="Diabetes mellitus type 2"`) could still slip through the
+  permissive threshold, since the filter alone doesn't verify the
+  question itself is genuinely about that condition.
 
 ## Functional requirements
 

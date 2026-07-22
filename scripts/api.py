@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from scripts.generate import generate_answer
-from scripts.retrieve import meets_threshold, retrieve
+from scripts.retrieve import meets_threshold, retrieve, select_threshold
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -92,10 +92,12 @@ def query(request: QueryRequest):
             birth_decade=request.birth_decade,
         )
 
-        if not chunks or not meets_threshold(chunks[0]["score"]):
+        threshold = select_threshold(condition=request.condition, drug=request.drug)
+
+        if not chunks or not meets_threshold(chunks[0]["score"], threshold):
             return {"answer": FALLBACK_ANSWER, "sources": [], "retrieved_count": 0}
 
-        relevant_chunks = [c for c in chunks if meets_threshold(c["score"])]
+        relevant_chunks = [c for c in chunks if meets_threshold(c["score"], threshold)]
         answer = generate_answer(request.question, relevant_chunks)
 
     except Exception as e:

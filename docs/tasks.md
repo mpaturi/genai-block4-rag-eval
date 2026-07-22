@@ -180,3 +180,36 @@ still unmerged (stacked PR), or `main` if it already merged.
 - [x] `git push -u origin phase-7-metadata-filter`
 - [x] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already
       merged) — opened by the user
+
+**PR7 review fixup (Leone):** the live API always used
+`DEFAULT_THRESHOLD` regardless of which filter was active, so a
+condition/drug filter never got the permissive threshold Run 6 showed
+was safe specifically for those two filter types.
+
+- [x] Add `PERMISSIVE_THRESHOLD` and `select_threshold()` to
+      `scripts/retrieve.py` — permissive only for `condition`/`drug`
+      filters, never `gender`/`lab`/`birth_decade`, since only
+      condition/drug can structurally return zero candidates for an
+      untracked topic
+- [x] Wire `select_threshold()` into `scripts/api.py`'s `/query` handler
+      — both the fallback check and the `relevant_chunks` filter must use
+      the same computed threshold
+- [x] Add unit tests for `select_threshold()` to `tests/test_retrieve.py`
+- [x] Add `tests/test_api.py` — integration-style test proving a
+      gender-only filter does *not* go permissive end-to-end (the one
+      thing `select_threshold()`'s own unit tests can't prove by
+      themselves)
+- [x] Update `docs/spec.md`'s Known limitations and Retrieval design
+      sections to describe `select_threshold()` and cite Run 6
+- [x] Run the full test suite — confirm nothing else broke
+- [x] Re-run `python scripts/run_eval.py --filtered --threshold 0.2` as a
+      regression sanity check against the already-documented Run 6
+      numbers (this run itself is unaffected — `run_eval.py` isn't wired
+      to `select_threshold()`, only `api.py` is)
+- [x] Manually hit `POST /query` once with a condition filter and an
+      out-of-scope-sounding question (goes permissive), and once with
+      only a gender filter and the same question (stays at
+      `DEFAULT_THRESHOLD`, falls back)
+- [x] Commit referencing the review feedback, push to
+      `phase-7-metadata-filter` — no new PR, lands as additional commits
+      on PR7

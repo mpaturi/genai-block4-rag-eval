@@ -13,7 +13,14 @@ correctly from given arguments.
 """
 import pytest
 
-from scripts.retrieve import RAGFilterError, build_metadata_filter, meets_threshold
+from scripts.retrieve import (
+    DEFAULT_THRESHOLD,
+    PERMISSIVE_THRESHOLD,
+    RAGFilterError,
+    build_metadata_filter,
+    meets_threshold,
+    select_threshold,
+)
 
 
 def test_score_above_threshold_is_a_match():
@@ -111,3 +118,30 @@ def test_build_metadata_filter_partial_lab_combo_raises():
         build_metadata_filter(comparison="above", value=140)
     with pytest.raises(RAGFilterError):
         build_metadata_filter(value=140)
+
+
+# select_threshold() only accepts condition/drug - gender/lab/birth_decade
+# aren't parameters it can even receive, so there's no unit test that can
+# pass them and assert "still default." That's deliberate: those filter
+# types provide no structural protection against an off-topic question
+# (see select_threshold()'s docstring), so they must never be able to
+# select PERMISSIVE_THRESHOLD - the api.py-level integration test in
+# tests/test_api.py is what actually proves a gender-only request doesn't
+# go permissive end-to-end; these tests only cover select_threshold()'s
+# own condition/drug logic in isolation.
+
+
+def test_select_threshold_no_filters_is_default():
+    assert select_threshold() == DEFAULT_THRESHOLD
+
+
+def test_select_threshold_condition_only_is_permissive():
+    assert select_threshold(condition="Asthma") == PERMISSIVE_THRESHOLD
+
+
+def test_select_threshold_drug_only_is_permissive():
+    assert select_threshold(drug="Albuterol") == PERMISSIVE_THRESHOLD
+
+
+def test_select_threshold_condition_and_drug_together_is_permissive():
+    assert select_threshold(condition="Asthma", drug="Albuterol") == PERMISSIVE_THRESHOLD
