@@ -47,6 +47,46 @@ Full design reasoning lives in `docs/spec.md`; this file covers setup, architect
    pytest
    ```
 
+## Metadata filtering
+
+`POST /query` accepts optional structured filters alongside the question,
+narrowing retrieval to exact metadata matches before similarity ranking:
+`condition`, `drug`, `lab` (`SBP`/`BMI`/`Glucose`/`HbA1c`), `comparison`
+(`above`/`below`), `value`, `gender` (`M`/`F`), `birth_decade` (e.g.
+`1970`). All default to unset — a request using none of them behaves
+exactly like a plain semantic-search query. `lab`, `comparison`, and
+`value` must be given together; a partial combination returns HTTP 422.
+
+Unfiltered:
+```json
+{ "question": "Which patients have type 2 diabetes and take metformin?" }
+```
+
+Filtered:
+```json
+{
+  "question": "Which hypertensive men have a high latest SBP?",
+  "condition": "Essential hypertension",
+  "gender": "M",
+  "birth_decade": 1970,
+  "lab": "SBP",
+  "comparison": "above",
+  "value": 140
+}
+```
+
+See `docs/spec.md`'s Metadata filter design section for the full
+reasoning (value mapping, confirmed Pinecone client behavior, naming
+matched to Block 5's `graph_tool.py`).
+
+To test retrieval quality with filters applied, run the eval harness's
+filtered mode:
+```
+python scripts/run_eval.py --top-k 20 --threshold 0.2 --filtered
+```
+See `docs/eval_results.md`'s Runs 4–7 for the filtered-vs-unfiltered
+results and how those `top_k`/`threshold` values were chosen.
+
 ## Architecture
 
 ![RAG pipeline architecture](docs/rag_pipeline_architecture.svg)

@@ -143,5 +143,41 @@ still unmerged (stacked PR), or `main` if it already merged.
       with the lab/comparison/value all-or-nothing validator
 - [x] Run the full test suite — confirm nothing else broke
 - [x] Commit `scripts/retrieve.py`, `scripts/api.py`, `tests/test_retrieve.py`
-- [ ] `git push -u origin phase-7-metadata-filter`
-- [ ] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already merged)
+- [x] Fix `scripts/api.py` to log `/query` failures server-side
+      (`logger.exception`) without leaking tracebacks into the response
+- [x] Replace `retrieve.py`'s per-call Pinecone client construction with
+      a module-level lazy singleton (`_get_index()`)
+- [x] Restore the explicit `index_name not in pc.list_indexes().names()`
+      check in `scripts/ingest.py`, matching `create_index.py`'s pattern
+- [x] Treat whitespace-only text as empty in `chunk_records.py`'s
+      `chunk_text()` (`not text.strip()`, not `text == ""`)
+- [x] Fix `scripts/verify.py`'s `main()` to fail cleanly (`[FAIL]`, exit
+      1) instead of crashing on a nonexistent index name — same fix
+      applied independently on both `phase-6-verify-docs` and this branch
+- [x] Add `test_build_metadata_filter_unrecognized_gender_raises_before_pinecone`
+      to `tests/test_retrieve.py`
+- [x] Merge `phase-6-verify-docs` into `phase-7-metadata-filter` to bring
+      in the four regression fixes and the `verify.py` fix phase-6 got
+      independently — resolved conflicts by reading the merged files, not
+      trusting the merge blindly
+- [x] Add `run_eval.py --filtered` mode with a translation table bridging
+      `questions.json`'s casual phrasing to Pinecone's stored strings
+- [x] Document Run 4 (filtered eval, `top_k=5`/`threshold=0.4`) in
+      `docs/eval_results.md` — precision/recall/fallback accuracy vs. the
+      same 16-question subset unfiltered
+- [x] Document Run 5 (filtered, `top_k=25`) — confirms recall's
+      remaining gap is the score threshold, not `top_k`, once filtered
+- [x] Investigate the real score floor among genuinely-missed correct
+      patients (corrected per-patient methodology, not per-chunk) and
+      document Run 6 (filtered, `threshold=0.2`) — recall 0.287→0.884,
+      fallback accuracy holds at 1.000 filtered vs. collapses to 0.000
+      unfiltered at the same threshold
+- [x] Document Run 7 (filtered, `top_k=20`) — closes the `top_k=15` cap
+      found in Run 6's per-question detail (q01/q06/q08)
+- [x] Raise `retrieve.py`'s `DEFAULT_TOP_K` and `api.py`'s
+      `QueryRequest.top_k` default from 5 to 15, backed by Run 5's
+      observed per-question ceiling (11), not a round guess
+- [x] `git push -u origin phase-7-metadata-filter`
+- [ ] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already
+      merged) — status not confirmed from this environment (no `gh` auth
+      available here); verify on GitHub directly
