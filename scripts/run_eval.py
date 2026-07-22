@@ -22,7 +22,7 @@ import json
 import sys
 
 from build_eval_answer_key import QUESTIONS_PATH, build_answer_key, load_data
-from retrieve import DEFAULT_THRESHOLD, DEFAULT_TOP_K, meets_threshold, retrieve
+from retrieve import DEFAULT_THRESHOLD, DEFAULT_TOP_K, meets_threshold, retrieve, select_threshold
 
 # Phase 7 filtered-eval mode only: questions.json predates the metadata-
 # filter integration and reuses concepts.py's casual/lowercase condition
@@ -116,6 +116,7 @@ def run_eval(
     top_k: int = DEFAULT_TOP_K,
     threshold: float = DEFAULT_THRESHOLD,
     filtered: bool = False,
+    conditional_threshold: bool = False,
 ) -> dict:
     """Runs every question's text through retrieve(), scores it against
     answer_key, and returns aggregated metrics plus per-question detail.
@@ -131,6 +132,13 @@ def run_eval(
     (min_visit_count, or a lab/comparison outside the translation tables)
     is excluded entirely - not scored, not counted as a miss - and listed
     in the returned "excluded_ids".
+
+    conditional_threshold=True (Phase 7, Run 8) additionally computes
+    each question's own threshold via select_threshold() from its
+    translated condition/drug filters, matching scripts/api.py's live
+    per-request behavior, instead of using the single flat `threshold`
+    for every question. Only valid alongside filtered=True - the caller
+    (main()) enforces this before run_eval() is ever called.
     """
     total_correct = 0
     total_retrieved = 0
@@ -151,18 +159,25 @@ def run_eval(
 
         chunks = retrieve(question["question"], top_k=top_k, **filter_kwargs)
 
+        if conditional_threshold:
+            question_threshold = select_threshold(
+                condition=filter_kwargs.get("condition"), drug=filter_kwargs.get("drug")
+            )
+        else:
+            question_threshold = threshold
+
         # Same fallback decision api.py makes: nothing retrieved, or the
         # top-ranked chunk doesn't clear threshold. Equivalent to "no
         # chunk clears threshold" since retrieve() returns Pinecone's
         # ranked order (highest score first) - checking just chunks[0]
         # mirrors api.py's actual short-circuit rather than re-deriving
         # the same result a different way.
-        triggered_fallback = not chunks or not meets_threshold(chunks[0]["score"], threshold)
+        triggered_fallback = not chunks or not meets_threshold(chunks[0]["score"], question_threshold)
 
         # "Retrieved" mirrors exactly what Job 2 would see: only chunks
         # that individually clear the threshold, deduped to unique
         # person_ids since one patient can contribute more than one chunk.
-        relevant_chunks = [c for c in chunks if meets_threshold(c["score"], threshold)]
+        relevant_chunks = [c for c in chunks if meets_threshold(c["score"], question_threshold)]
         retrieved_ids = {c["person_id"] for c in relevant_chunks}
 
         if question["answerable"]:
@@ -199,6 +214,7 @@ def run_eval(
         "top_k": top_k,
         "threshold": threshold,
         "filtered": filtered,
+        "conditional_threshold": conditional_threshold,
         "precision": precision,
         "recall": recall,
         "fallback_accuracy": fallback_accuracy,
@@ -213,7 +229,10 @@ def run_eval(
 
 
 def print_report(metrics: dict) -> None:
-    print(f"top_k={metrics['top_k']}  threshold={metrics['threshold']}  filtered={metrics['filtered']}\n")
+    print(
+        f"top_k={metrics['top_k']}  threshold={metrics['threshold']}  "
+        f"filtered={metrics['filtered']}  conditional_threshold={metrics['conditional_threshold']}\n"
+    )
     print(
         f"  Precision:         {metrics['precision']:.3f}  "
         f"({metrics['total_correct']}/{metrics['total_retrieved']})"
@@ -249,7 +268,19 @@ def main() -> int:
         "represented (min_visit_count, or a lab/comparison outside the "
         "translation tables) are excluded from the run.",
     )
+    parser.add_argument(
+        "--conditional-threshold",
+        action="store_true",
+        help="Only valid with --filtered. Instead of using a single flat "
+        "--threshold for every question, compute each question's threshold "
+        "via select_threshold() from its own translated condition/drug "
+        "filters - matching scripts/api.py's live per-request behavior "
+        "instead of a fixed value for the whole run.",
+    )
     args = parser.parse_args()
+
+    if args.conditional_threshold and not args.filtered:
+        parser.error("--conditional-threshold requires --filtered")
 
     with open(QUESTIONS_PATH) as f:
         questions = json.load(f)
@@ -262,7 +293,12 @@ def main() -> int:
         return 1
 
     metrics = run_eval(
-        questions, answer_key, top_k=args.top_k, threshold=args.threshold, filtered=args.filtered
+        questions,
+        answer_key,
+        top_k=args.top_k,
+        threshold=args.threshold,
+        filtered=args.filtered,
+        conditional_threshold=args.conditional_threshold,
     )
     print_report(metrics)
     return 0

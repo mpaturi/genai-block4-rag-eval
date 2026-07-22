@@ -4,11 +4,13 @@ This file is produced by `scripts/run_eval.py` (Phase 5) and is committed as
 evidence for the "documents ≥1 experiment" acceptance criterion — see
 `docs/spec.md`'s Eval harness design section.
 
-All runs below use the same 20-question set in `data/eval/questions.json`
-(15 answerable, 5 deliberately unanswerable) **except Run 4**, which
-explicitly documents the 16-question subset it uses and why; each run's
-specific `top_k` and `threshold` settings are listed in its own heading
-below. Ground truth was independently recomputed by
+Runs 1–3 use the original 20-question set in `data/eval/questions.json`
+(15 answerable, 5 deliberately unanswerable). Runs 4–7 use a 16-question
+filtered subset (see Run 4 for which questions and why). Run 8 adds two
+new demographic-only questions (q21, q22), bringing the question set to
+22 total and the filtered subset to 18 — see Run 8 for details. Each
+run's specific `top_k`/`threshold`/question-subset is documented in its
+own heading below. Ground truth was independently recomputed by
 `scripts/build_eval_answer_key.py` and spot-checked by hand (see
 Spot-check section below) before any run.
 
@@ -379,6 +381,124 @@ sized to this eval set's specific answer-set sizes (max 20, for q01) —
 not a general guarantee that 20 is enough for an arbitrary live question,
 the same caveat Run 3 raised for the unfiltered case.
 
+## Run 8 — demographic-only questions + `select_threshold()` wired into the eval harness (`top_k=15`, `--filtered --conditional-threshold`)
+
+**New questions, ground truth verified — and corrected.** Two new
+answerable, demographic-only questions were added to
+`data/eval/questions.json` (no `condition`/`drug`/`lab` — just `gender`
+and `birth_decade`, so they exercise the one filter combination
+`select_threshold()` deliberately does *not* treat as permissive):
+
+- **q21**: `{"gender": "M", "birth_decade": 1930}` — "Which male patients
+  were born in the 1930s?"
+- **q22**: `{"gender": "F", "birth_decade": 1990}` — "Which female
+  patients were born in the 1990s?"
+
+The counts these were planned around (129 and 691, from a raw row count
+against `person.csv`) turned out to be wrong — `python
+scripts/build_eval_answer_key.py` reported **128** and **680**. Root
+cause, confirmed by investigation: `person.csv` has duplicate rows per
+`person_id` (1 duplicate in the male-1930s bucket, 11 in the
+female-1990s bucket) — the same dirty-data pattern already documented
+elsewhere in this file for `visit_occurrence.csv`.
+`patients_matching_demographic()` correctly `set()`-dedupes to unique
+patients, which is the honest ground truth; the raw row count wasn't.
+**128 and 680 are the verified numbers used throughout this section.**
+`build_eval_answer_key.py`'s assertion check passes for the full
+22-question set (all labels honest).
+
+**`run_eval.py --conditional-threshold` (new):** rather than one flat
+`--threshold` for the whole run, each question now gets its own
+threshold via `select_threshold()`, computed from that question's own
+translated `condition`/`drug` filters — matching `scripts/api.py`'s
+actual live per-request behavior instead of a single fixed value. Only
+valid together with `--filtered`.
+
+### Aggregate results, all 18 included questions (`top_k=15`, `--filtered --conditional-threshold`)
+
+| Metric | Value |
+|---|---|
+| Precision | 1.000 (133/133) |
+| Recall | 0.142 (133/937) |
+| Fallback accuracy | 1.000 (4/4) |
+
+**The original 16 questions' contribution is byte-identical to Run 6** —
+every one of q01–q09/q13–q15 already carries a `condition` or `drug`
+filter, so `select_threshold()` computes 0.2 for all of them, the same
+value Run 6's flat `--threshold 0.2` used. Confirmed by comparing
+per-question output directly: q01 15/15/20, q02 12/12/12, q03 8/8/8, q04
+4/4/4, q05 10/10/10, q06 15/15/17, q07 5/5/5, q08 15/15/18, q09 4/4/4,
+q13 9/9/9, q14 12/12/17, q15 5/5/5, q16/q17/q19/q20 all fell back —
+identical to Run 6's own per-question output, entry for entry. Subtotal:
+114/114 correct/retrieved, 129 actual (precision 1.000, recall 0.884,
+fallback 1.000/4) — Run 6's exact numbers. **All of the difference
+between this run's aggregate and Run 6's comes from q21/q22**: 133 − 114
+= 19 additional correct/retrieved, 937 − 129 = 808 additional actual
+(128 + 680).
+
+### q21/q22 per-question detail (conditional threshold — both get `DEFAULT_THRESHOLD`, 0.4, since neither has a condition/drug filter)
+
+| Question | Retrieved | Correct | Actual | Recall | Bottleneck |
+|---|---|---|---|---|---|
+| q21 | 4 | 4 | 128 | 0.031 | Score threshold (0.4) — only 4 chunks cleared it, `top_k=15` never became binding |
+| q22 | 15 | 15 | 680 | 0.022 | `top_k=15` — every one of the 15 slots is a correct patient (precision still 1.000), but the ground-truth set (680) is so large that `top_k` caps recall long before threshold matters |
+
+Both stay at perfect precision (4/4, 15/15) — a gender/birth_decade
+filter guarantees any retrieved chunk matches that demographic, the same
+structural protection condition/drug filters have. Recall is low for
+both, but for different reasons: q21's ceiling is the 0.4 threshold
+(few chunks score that high against a generic demographic-only
+question), q22's ceiling is `top_k` (680 is such a large bucket that
+`top_k=15` caps it regardless of threshold) — the same "which limiter is
+binding" story Run 2/3 already told for unfiltered queries, now shown
+again for demographic-only filtered ones.
+
+### What 0.2 vs. 0.4 actually does for q21/q22 (`--filtered --threshold 0.2` vs. `--filtered --threshold 0.4`, flat, not conditional)
+
+| Question | `threshold=0.2` | `threshold=0.4` |
+|---|---|---|
+| q21 | retrieved=15, correct=15 (now `top_k`-capped) | retrieved=4, correct=4 (threshold-capped) |
+| q22 | retrieved=15, correct=15 | retrieved=15, correct=15 (unchanged) |
+
+Exactly as the aggregate numbers implied: q21's recall really does
+improve at the lower threshold (4 → 15, all still correct) — the
+threshold, not `top_k`, was its binding constraint at 0.4, and lowering
+it just shifts the constraint over to `top_k` instead. q22 is completely
+unaffected by the threshold change (15 either way) because `top_k=15`
+was already the binding constraint at 0.4; a 680-patient bucket has far
+more chunks clearing 0.4 than 15 already.
+
+### This does not mean the gender/birth_decade exclusion from `select_threshold()` was unnecessary
+
+The pattern above — precision holding at 1.000, recall improving, no
+apparent cost — looks identical to the condition/drug case Run 6
+documented. **That similarity is real but doesn't prove the fix in
+`d6b54fa` was excessive.** `select_threshold()` withholds
+`PERMISSIVE_THRESHOLD` from gender/birth_decade specifically because of
+a risk this eval harness structurally cannot represent: an off-topic
+*free-text question* paired with only a demographic filter. Ground truth
+here is computed entirely from `filters` via `compute_answer_set()` —
+`build_eval_answer_key.py` never reads the question text — so a question
+like "Which female patients have a fake, untracked condition?" with
+`filters={"gender": "F"}` would still get "all female patients" as its
+correct answer, a large non-empty set, not the empty unanswerable set
+the real risk scenario needs. `build_answer_key()`'s own honesty
+assertion (`answerable` questions must have non-empty ground truth) would
+reject a demographic-only question deliberately mislabeled `answerable:
+false` for this reason — that combination is unrepresentable in this
+ground-truth model without a much bigger redesign, out of scope here.
+
+The actual risk — a gender-only-filtered off-topic question returning a
+pile of unrelated patients instead of falling back — remains covered
+only by `tests/test_api.py`'s
+`test_gender_only_filter_does_not_trigger_permissive_threshold`, which
+constructs that exact scenario directly (a fixed low-but-nonzero-scoring
+chunk, a gender-only filter, asserted to fall back) rather than relying
+on `questions.json`'s filter-derived ground truth. **Q21/q22's clean
+precision numbers should not be read as "0.2 would have been fine for
+gender/birth_decade filters too" — they can't test the thing that matters
+here at all.**
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against
@@ -398,7 +518,7 @@ the raw CSVs independently of `build_eval_answer_key.py`'s own code path:
   2025-11-19. Correct.
 
 All 3 matched their filters exactly. Combined with
-`build_eval_answer_key.py`'s own assertion check (all 20 questions labeled
+`build_eval_answer_key.py`'s own assertion check (all 22 questions labeled
 honestly — no answerable question computed an empty set, no unanswerable
 question computed a non-empty one), this gives reasonable confidence the
 ground truth is trustworthy.

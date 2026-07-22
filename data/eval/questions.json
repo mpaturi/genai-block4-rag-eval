@@ -138,5 +138,19 @@
     "question": "Which male patients born in the 1980s have chronic kidney disease?",
     "filters": { "condition": "chronic kidney disease", "gender": "M", "birth_decade": 1980 },
     "answerable": false
+  },
+  {
+    "id": "q21",
+    "type": "demographic",
+    "question": "Which male patients were born in the 1930s?",
+    "filters": { "gender": "M", "birth_decade": 1930 },
+    "answerable": true
+  },
+  {
+    "id": "q22",
+    "type": "demographic",
+    "question": "Which female patients were born in the 1990s?",
+    "filters": { "gender": "F", "birth_decade": 1990 },
+    "answerable": true
   }
 ]

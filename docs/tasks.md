@@ -213,3 +213,30 @@ was safe specifically for those two filter types.
 - [x] Commit referencing the review feedback, push to
       `phase-7-metadata-filter` — no new PR, lands as additional commits
       on PR7
+
+**Run 8 — demographic-only questions + `select_threshold()` wired into
+`run_eval.py`:**
+
+- [x] Add q21 (`gender: M`, `birth_decade: 1930`) and q22 (`gender: F`,
+      `birth_decade: 1990`) to `data/eval/questions.json`, both
+      answerable, no condition/drug/lab
+- [x] Verify ground truth via `python scripts/build_eval_answer_key.py`
+      against the real data rather than trusting the planned counts —
+      found and documented a discrepancy (129/691 planned vs. 128/680
+      actual, caused by duplicate rows in `person.csv`, the same
+      dirty-data pattern already known from `visit_occurrence.csv`)
+- [x] Add `--conditional-threshold` to `scripts/run_eval.py` — computes
+      each question's threshold via `select_threshold()` from its own
+      translated filters instead of one flat `--threshold`; only valid
+      with `--filtered`, enforced with a clear `parser.error()`
+- [x] Run `--filtered --conditional-threshold` (`top_k=15`, matching Run
+      6) and document as Run 8 in `docs/eval_results.md`
+- [x] Confirm the original 16 questions' contribution is byte-identical
+      to Run 6, with the math showing where the difference in the
+      18-question aggregate comes from
+- [x] Document the explicit caveat: this run cannot test the actual
+      off-topic-question risk `select_threshold()`'s condition/drug
+      restriction protects against, since ground truth here is
+      filter-derived, not text-aware — that risk stays covered only by
+      `tests/test_api.py`. Q21/q22's clean precision numbers do not mean
+      the gender/birth_decade exclusion was unnecessary.
