@@ -178,6 +178,5 @@ still unmerged (stacked PR), or `main` if it already merged.
       `QueryRequest.top_k` default from 5 to 15, backed by Run 5's
       observed per-question ceiling (11), not a round guess
 - [x] `git push -u origin phase-7-metadata-filter`
-- [ ] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already
-      merged) — status not confirmed from this environment (no `gh` auth
-      available here); verify on GitHub directly
+- [x] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already
+      merged) — opened by the user
