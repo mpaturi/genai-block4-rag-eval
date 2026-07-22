@@ -326,6 +326,59 @@ scoring below 0.2 that this data never exercised. The zero-false-positive
 property is what makes this safe to test aggressively, not a guarantee
 that 0.2 is the true minimum.
 
+## Run 7 — experiment: raise `top_k` to 20, filtered (`top_k=20`, `threshold=0.2`, filtered)
+
+Same 16-question subset and translation tables as Run 4–6.
+
+**What changed and why:** Run 6's per-question detail showed 3 of the 12
+included answerable questions — q01, q06, q08 — retrieved exactly 15,
+`top_k=15`'s cap, while each had more correct patients in its
+ground-truth set than that (actual 20, 17, 18 respectively). That's not
+one edge case; it's 3 of 12 questions hitting the ceiling, a real sign
+`top_k=15` was capping recall again even at the lower threshold. `top_k`
+raised to 20 — just above q01's actual answer-set size (20), the largest
+among the included questions — threshold held at Run 6's 0.2 so `top_k`
+is the only variable changed.
+
+| Metric | Filtered, `top_k=20`/`threshold=0.2` | Unfiltered, same 16 Qs, same settings | Run 6 (filtered, `top_k=15`/`threshold=0.2`) |
+|---|---|---|---|
+| Precision | 1.000 (126/126) | 0.138 (33/240) | 1.000 (114/114) |
+| Recall | 0.977 (126/129) | 0.256 (33/129) | 0.884 (114/129) |
+| Fallback accuracy | 1.000 (4/4) | 0.000 (0/4) | 1.000 (4/4) |
+
+**Result — were q01/q06/q08 actually uncapped?** Yes, all three, cleanly:
+
+- **q01: retrieved=20, actual=20** — no longer truncated, but it does
+  consume the entire `top_k=20` budget. Since its answer set is exactly
+  20, this run happens to capture all of it with zero slack; a
+  hypothetical 21st correct patient would still be cut off. q01 is fully
+  captured here, not "still constrained" in the sense of missing anyone,
+  but it's the one question with no headroom left at `top_k=20`.
+- **q06: retrieved=17, actual=17** and **q08: retrieved=18, actual=18** —
+  both now fully uncapped with room to spare (3 and 2 slots unused,
+  respectively).
+
+Recall climbed from 0.884 to 0.977 (+0.093) — nearly all of the remaining
+gap from Run 6 closed. The 3 missing patients (129 − 126) are entirely
+q14 (`retrieved=14`, `actual=17` — see per-question detail): q14 was
+never `top_k`-capped at 15 either (12 retrieved then, well under 15), so
+its shortfall is the 0.2 score threshold, not `top_k` — the same 3
+patients would need a threshold below 0.2 to be captured, not a higher
+`top_k`.
+
+Precision held at exactly 1.000 (126/126) and fallback accuracy held at
+1.000 (4/4), consistent with every filtered run so far — both properties
+that come from the metadata filter itself, not from `top_k` or
+`threshold`, so neither was expected to move here. The same-subset
+unfiltered control at these settings again confirms the filtered/
+unfiltered gap: fallback accuracy 0.000 unfiltered vs. 1.000 filtered,
+the same structural result as Run 6.
+
+**Caveat:** same 16-question-subset caveat as Run 4–6. `top_k=20` is
+sized to this eval set's specific answer-set sizes (max 20, for q01) —
+not a general guarantee that 20 is enough for an arbitrary live question,
+the same caveat Run 3 raised for the unfiltered case.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against
