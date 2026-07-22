@@ -240,3 +240,21 @@ was safe specifically for those two filter types.
       filter-derived, not text-aware — that risk stays covered only by
       `tests/test_api.py`. Q21/q22's clean precision numbers do not mean
       the gender/birth_decade exclusion was unnecessary.
+
+**Run 9 — raise `DEFAULT_TOP_K` to 20:**
+
+- [x] Raise `scripts/retrieve.py`'s `DEFAULT_TOP_K` and `scripts/api.py`'s
+      `QueryRequest.top_k` default from 15 to 20, citing Run 7 and
+      `select_threshold()`'s live production behavior as the
+      justification (condition/drug-filtered queries — the common case
+      for Block 5 — now get the permissive threshold automatically)
+- [x] Update `docs/spec.md`'s Retrieval design and API design sections
+      with the full 5 → 15 → 20 revision history
+- [x] Run `--filtered --conditional-threshold --top-k 20` and document as
+      Run 9 in `docs/eval_results.md`
+- [x] Confirm the original 16 questions now match Run 7's per-question
+      output exactly; confirm q21 unchanged from Run 8 (still
+      threshold-capped, not top_k-capped — consistent with Run 8's
+      explanation, not a contradiction); confirm q22 moved by exactly
+      the `top_k` increase, still structurally capped by its 680-patient
+      ground-truth size

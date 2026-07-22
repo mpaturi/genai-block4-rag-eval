@@ -499,6 +499,61 @@ precision numbers should not be read as "0.2 would have been fine for
 gender/birth_decade filters too" — they can't test the thing that matters
 here at all.**
 
+## Run 9 — raise `DEFAULT_TOP_K` to 20 (`top_k=20`, `--filtered --conditional-threshold`)
+
+**What changed vs. Run 8:** only `top_k`, 15 → 20 — same
+`--conditional-threshold` mode, same 22-question set (18 included: q10,
+q11, q12, q18 still excluded, unrepresentable). This is also
+`scripts/retrieve.py`'s new shipped `DEFAULT_TOP_K` and `scripts/api.py`'s
+new `QueryRequest.top_k` default, not just an experimental value — see
+the `DEFAULT_TOP_K` comment for the full revision history (5 → 15 → 20).
+
+```
+python scripts/run_eval.py --filtered --conditional-threshold --top-k 20
+```
+
+| Metric | Value |
+|---|---|
+| Precision | 1.000 (150/150) |
+| Recall | 0.160 (150/937) |
+| Fallback accuracy | 1.000 (4/4) |
+
+**Original 16 questions now match Run 7's per-question output exactly**
+(not Run 6/8's) — confirmed entry-by-entry: q01 20/20/20, q02 12/12/12,
+q03 8/8/8, q04 4/4/4, q05 10/10/10, q06 17/17/17, q07 5/5/5, q08
+18/18/18, q09 4/4/4, q13 9/9/9, q14 14/14/17, q15 5/5/5 — identical to
+Run 7's own numbers. Makes sense: raising `top_k` to 20 uncaps exactly
+the same questions Run 7 identified (q01, q06, q08 were the ones pinned
+at the old `top_k=15` ceiling), and `--conditional-threshold` computes
+0.2 for all 16 of them since each already carries a `condition`/`drug`
+filter — the same threshold Run 7 used flatly. Subtotal: 126/126 correct/
+retrieved, 129 actual (precision 1.000, recall 0.977) — Run 7's exact
+numbers.
+
+**q21: unchanged from Run 8 — retrieved=4, correct=4, actual=128.**
+This is expected, not a surprise requiring investigation: q21 has no
+condition/drug filter, so `select_threshold()` still gives it
+`DEFAULT_THRESHOLD` (0.4) regardless of `top_k`, and Run 8 already
+established q21's binding constraint at 0.4 is the *threshold*, not
+`top_k` (only 4 chunks clear 0.4 at all, well under either `top_k=15` or
+`top_k=20`). Raising `top_k` had nothing to uncap here — confirms, rather
+than contradicts, Run 8's explanation.
+
+**q22: retrieved=20, correct=20, actual=680** — moved from Run 8's 15 by
+exactly the `top_k` increase (15 → 20), still a tiny fraction of 680 and
+still `top_k`-capped (precision holds at 20/20). This is a structural
+limit of demographic-only filters against a large candidate pool, not
+something `top_k=20` — or any `top_k` in the 1–20 validated range — was
+ever going to fully solve; closing q22's recall gap would need a
+`top_k` in the hundreds, far past what a single `/query` response should
+reasonably return.
+
+**This is the new shipped default.** `top_k=20` with `select_threshold()`
+live in `scripts/api.py` is what a real caller (Block 5) can now expect
+from a condition/drug-filtered query: the permissive 0.2 threshold and a
+`top_k` sized to Run 7's measured ceiling under that threshold, not
+Run 5's older, stricter-threshold measurement.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against

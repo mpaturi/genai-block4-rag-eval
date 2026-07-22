@@ -32,7 +32,7 @@ FALLBACK_ANSWER = (
 
 class QueryRequest(BaseModel):
     question: str
-    top_k: int = 15
+    top_k: int = 20
     # Phase 7 - optional structured metadata filters, all None by default
     # so a request using none of them behaves exactly as before Phase 7.
     condition: str | None = None

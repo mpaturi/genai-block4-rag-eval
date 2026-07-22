@@ -34,14 +34,20 @@ DEFAULT_THRESHOLD = 0.4
 # control) - see select_threshold() below for where this is applied.
 PERMISSIVE_THRESHOLD = 0.2
 
-# Revised in Phase 7 from an initial 5: the filtered eval (Run 5,
-# top_k=25, threshold=0.4) showed the highest per-question `retrieved`
-# count actually observed across all 12 answerable questions in the
-# 16-question filtered subset was 11 (q01 and q02) - every other question
-# retrieved fewer. 15 gives roughly a 36% margin above that measured
-# ceiling, since the 20-question eval set doesn't cover the full range of
-# what a live caller might ask - see docs/eval_results.md's Run 5.
-DEFAULT_TOP_K = 15
+# Revision history: initial 5 -> 15 (Run 5) -> 20 (this fixup, Run 7).
+# Run 5 (top_k=25, threshold=0.4, unfiltered-style flat threshold) found
+# the highest per-question `retrieved` count actually observed was 11
+# (q01, q02), so 15 was picked as a ~36% margin above that. But Run 7
+# (top_k=20, threshold=0.2 - the permissive threshold condition/drug
+# filters now get automatically via select_threshold(), live in api.py
+# since PR7's review fixup) showed top_k=15 still truncated 3 of 12
+# tested questions (q01, q06, q08), and top_k=20 closed nearly all of
+# that gap (recall 0.884 -> 0.977, Run 6 -> Run 7). Since a real caller
+# (Block 5) typically sends condition/drug-filtered queries - exactly the
+# regime where the permissive threshold is now the common case, not the
+# exception - 20 is the better-supported default. See docs/eval_results.md's
+# Run 5, Run 7, and Run 9.
+DEFAULT_TOP_K = 20
 
 
 def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:

@@ -350,15 +350,24 @@ time, not from a hardcoded guess baked into this doc:
 
 ## Retrieval design (Job 1)
 
-- Input: a question string, optional `top_k` (default 15, revised from an
-  initial 5 in Phase 7). Phase 7's filtered eval (Run 5, `top_k=25`,
-  `threshold=0.4`) measured the highest per-question `retrieved` count
-  actually observed across all 12 answerable questions in the filtered
-  eval subset at 11 (q01 and q02) — every other question retrieved fewer.
-  15 gives roughly a 36% margin above that measured ceiling, since the
-  20-question eval set doesn't cover the full range of what a live caller
-  might ask. See `docs/eval_results.md`'s Run 5 and
-  `scripts/retrieve.py`'s `DEFAULT_TOP_K` for where this lives in code.
+- Input: a question string, optional `top_k` (default 20, revision
+  history: initial 5 → 15 (Phase 7, Run 5) → 20 (this later fixup, Run
+  7)). Run 5 (`top_k=25`, `threshold=0.4`, a flat unfiltered-style
+  threshold) measured the highest per-question `retrieved` count actually
+  observed across all 12 answerable questions in the filtered eval subset
+  at 11 (q01 and q02) — every other question retrieved fewer — so 15 was
+  picked as a ~36% margin above that. But once `select_threshold()`
+  shipped live in `scripts/api.py` (see below), condition/drug-filtered
+  queries automatically get the permissive 0.2 threshold instead of 0.4 —
+  and Run 7 (`top_k=20`, `threshold=0.2`) showed `top_k=15` still
+  truncated 3 of 12 tested questions (q01, q06, q08) under that
+  threshold, while `top_k=20` closed nearly all of that gap (recall
+  0.884 → 0.977, Run 6 → Run 7). Since a real caller (Block 5) typically
+  sends condition/drug-filtered queries — exactly the regime where the
+  permissive threshold is now the common case, not the exception — 20 is
+  the better-supported default. See `docs/eval_results.md`'s Run 5, Run
+  7, and Run 9, and `scripts/retrieve.py`'s `DEFAULT_TOP_K` for where
+  this lives in code.
 - Pinecone embeds the question automatically (same model as ingestion) and
   returns the `top_k` most similar chunks, each with a similarity score
   (0 to 1) and its full metadata
@@ -488,9 +497,9 @@ Block 4 to consume.
 
 Request:
 ```json
-{ "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 15 }
+{ "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 20 }
 ```
-`top_k` is optional (default 15), validated to an integer between 1 and 20
+`top_k` is optional (default 20), validated to an integer between 1 and 20
 — out-of-range or invalid values return HTTP 422 before Pinecone is ever
 called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.
