@@ -92,3 +92,24 @@ def test_unfiltered_request_above_default_top_k_is_still_rejected():
     )
 
     assert response.status_code == 422
+
+
+def test_unrecognized_lab_name_returns_422_not_502():
+    # build_metadata_filter() raises RAGFilterError before any Pinecone
+    # call is made (see scripts/retrieve.py), so no mocking is needed here
+    # - this is bad input, not a service failure, and must not be lumped
+    # into the generic 502 the except Exception branch returns for real
+    # Pinecone/Claude outages.
+    response = client.post(
+        "/query",
+        json={
+            "question": "Which patients have high cholesterol?",
+            "lab": "Cholesterol",
+            "comparison": "above",
+            "value": 200,
+        },
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"] == "Invalid filter arguments."

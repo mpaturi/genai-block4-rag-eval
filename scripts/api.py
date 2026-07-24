@@ -23,6 +23,7 @@ from scripts.generate import generate_answer
 from scripts.retrieve import (
     DEFAULT_TOP_K,
     FILTERED_TOP_K_CEILING,
+    RAGFilterError,
     meets_threshold,
     retrieve,
     select_threshold,
@@ -113,6 +114,15 @@ def query(request: QueryRequest):
 
         relevant_chunks = [c for c in chunks if meets_threshold(c["score"], threshold)]
         answer = generate_answer(request.question, relevant_chunks)
+
+    except RAGFilterError as e:
+        # Invalid filter arguments (e.g. an unrecognized lab name) - bad
+        # input, not a service failure, so this is a 422, not the generic
+        # 502 below.
+        return JSONResponse(
+            status_code=422,
+            content={"error": "Invalid filter arguments.", "detail": str(e)},
+        )
 
     except Exception as e:
         # Full traceback goes to the server log; the response body stays
