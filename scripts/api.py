@@ -138,7 +138,12 @@ def query(request: QueryRequest):
         )
 
     sources = [
-        {"person_id": c["person_id"], "chunk_id": c["chunk_id"], "score": c["score"]}
+        {
+            "person_id": c["person_id"],
+            "chunk_id": c["chunk_id"],
+            "score": c["score"],
+            "chunk_text": c["chunk_text"],
+        }
         for c in relevant_chunks
     ]
 

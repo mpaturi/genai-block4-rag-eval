@@ -58,6 +58,9 @@ def test_condition_filter_allows_permissive_threshold(monkeypatch):
     body = response.json()
     assert body["retrieved_count"] == 1
     assert body["answer"] == "fake answer"
+    for source in body["sources"]:
+        assert isinstance(source["chunk_text"], str)
+        assert source["chunk_text"] != ""
 
 
 # FILTERED_TOP_K_CEILING (25) mirrors select_threshold()'s permissive gate -
