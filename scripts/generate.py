@@ -18,6 +18,18 @@ load_dotenv()
 MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 1024
 
+# Confirmed against the installed anthropic client (0.116.0): both
+# Anthropic(timeout=...) at construction and messages.create(timeout=...)
+# per-call accept a plain float (seconds). Per-call is used here to match
+# retrieve.py's SEARCH_TIMEOUT_SECONDS pattern and because this client is
+# already constructed fresh per call, not a shared singleton. A timed-out
+# call raises anthropic.APITimeoutError, confirmed live by calling
+# messages.create() with an unreasonably small timeout - it's an
+# Exception subclass, so api.py's existing `except Exception` in the
+# /query handler already converts it into the standard 502, no new
+# handling needed there.
+GENERATE_TIMEOUT_SECONDS = 10
+
 SYSTEM_PROMPT = (
     "You are a clinical assistant answering questions about patients using "
     "only the patient record excerpts provided below. Never use outside "
@@ -56,6 +68,7 @@ def generate_answer(question: str, chunks: list[dict]) -> str:
         max_tokens=MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
+        timeout=GENERATE_TIMEOUT_SECONDS,
     )
 
     return response.content[0].text

@@ -7,7 +7,9 @@ select_threshold() alone can prove, since that requires api.py to
 actually call it with the right arguments and use the result consistently
 for both the fallback check and the relevant_chunks filter.
 """
+import anthropic
 from fastapi.testclient import TestClient
+from pinecone import PineconeTimeoutError
 
 from scripts.api import app
 
@@ -113,3 +115,39 @@ def test_unrecognized_lab_name_returns_422_not_502():
     assert response.status_code == 422
     body = response.json()
     assert body["error"] == "Invalid filter arguments."
+
+
+# scripts/retrieve.py's SEARCH_TIMEOUT_SECONDS and scripts/generate.py's
+# GENERATE_TIMEOUT_SECONDS raise PineconeTimeoutError / anthropic.APITimeoutError
+# on a hang, confirmed live against the real clients - these tests prove
+# api.py's existing broad `except Exception` genuinely catches those real
+# exception types and converts them into the standard 502, rather than
+# assuming it does because both are technically Exception subclasses.
+
+
+def test_pinecone_timeout_returns_502_not_a_hang(monkeypatch):
+    def raise_timeout(*args, **kwargs):
+        raise PineconeTimeoutError("timed out")
+
+    monkeypatch.setattr("scripts.api.retrieve", raise_timeout)
+
+    response = client.post("/query", json={"question": "Which patients have asthma?"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "PineconeTimeoutError"
+
+
+def test_claude_timeout_returns_502_not_a_hang(monkeypatch):
+    monkeypatch.setattr("scripts.api.retrieve", lambda *args, **kwargs: [FAKE_CHUNK])
+
+    def raise_timeout(*args, **kwargs):
+        raise anthropic.APITimeoutError(request=None)
+
+    monkeypatch.setattr("scripts.api.generate_answer", raise_timeout)
+
+    response = client.post(
+        "/query", json={"question": "Which patients have asthma?", "condition": "Asthma"}
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "APITimeoutError"

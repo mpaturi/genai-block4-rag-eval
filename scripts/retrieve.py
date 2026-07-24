@@ -59,6 +59,15 @@ DEFAULT_TOP_K = 20
 # docs/spec.md "what I'd do next" for the planned follow-up.
 FILTERED_TOP_K_CEILING = 25
 
+# Confirmed against the installed pinecone client (9.1.0): Index.search()
+# takes a `timeout` kwarg directly (seconds, float) - not the older
+# query()-style retry/urllib3 timeout convention. A timed-out call raises
+# PineconeTimeoutError, confirmed live by calling search() with an
+# unreasonably small timeout - it's a TimeoutError/OSError/Exception
+# subclass, so api.py's existing `except Exception` in the /query handler
+# already converts it into the standard 502, no new handling needed there.
+SEARCH_TIMEOUT_SECONDS = 10
+
 
 def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:
     """A chunk scoring exactly at the threshold still counts as a match."""
@@ -217,7 +226,12 @@ def retrieve(
 
     index = _get_index()
 
-    search_kwargs = {"namespace": NAMESPACE, "top_k": top_k, "inputs": {"text": question}}
+    search_kwargs = {
+        "namespace": NAMESPACE,
+        "top_k": top_k,
+        "inputs": {"text": question},
+        "timeout": SEARCH_TIMEOUT_SECONDS,
+    }
     if metadata_filter:
         search_kwargs["filter"] = metadata_filter
 
