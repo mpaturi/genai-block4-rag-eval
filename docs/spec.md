@@ -368,6 +368,17 @@ time, not from a hardcoded guess baked into this doc:
   the better-supported default. See `docs/eval_results.md`'s Run 5, Run
   7, and Run 9, and `scripts/retrieve.py`'s `DEFAULT_TOP_K` for where
   this lives in code.
+- **`FILTERED_TOP_K_CEILING` (25) — a higher `top_k` ceiling for
+  condition/drug-filtered queries only, mirroring how
+  `select_threshold()` gates `PERMISSIVE_THRESHOLD` on the same
+  condition.** Confirmed empirically against the real Pinecone client
+  (not assumed): a condition/drug-filtered `top_k=25` returns cleanly.
+  Deliberately not set higher — a much bigger `top_k` turns a similarity
+  search into a table scan, the wrong tool for a fully-structured query;
+  that job belongs to the graph (see Block 5's `docs/spec.md` "what I'd
+  do next" for the planned follow-up). See `docs/eval_results.md`'s Run
+  11 and `scripts/retrieve.py`'s `FILTERED_TOP_K_CEILING` for where this
+  lives in code.
 - Pinecone embeds the question automatically (same model as ingestion) and
   returns the `top_k` most similar chunks, each with a similarity score
   (0 to 1) and its full metadata
@@ -499,7 +510,9 @@ Request:
 ```json
 { "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 20 }
 ```
-`top_k` is optional (default 20), validated to an integer between 1 and 20
+`top_k` is optional (default 20), validated to an integer between 1 and a
+ceiling that depends on whether a `condition` or `drug` filter is present
+in the same request — 20 unfiltered, 25 filtered (`FILTERED_TOP_K_CEILING`)
 — out-of-range or invalid values return HTTP 422 before Pinecone is ever
 called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.

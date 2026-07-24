@@ -56,3 +56,39 @@ def test_condition_filter_allows_permissive_threshold(monkeypatch):
     body = response.json()
     assert body["retrieved_count"] == 1
     assert body["answer"] == "fake answer"
+
+
+# FILTERED_TOP_K_CEILING (25) mirrors select_threshold()'s permissive gate -
+# a condition/drug filter raises the top_k ceiling, everything else stays at
+# DEFAULT_TOP_K (20). See scripts/retrieve.py's FILTERED_TOP_K_CEILING.
+
+
+def test_filtered_request_at_ceiling_top_k_succeeds(monkeypatch):
+    monkeypatch.setattr("scripts.api.retrieve", lambda *args, **kwargs: [FAKE_CHUNK])
+    monkeypatch.setattr("scripts.api.generate_answer", lambda question, chunks: "fake answer")
+
+    response = client.post(
+        "/query",
+        json={"question": "Which patients have asthma?", "condition": "Asthma", "top_k": 25},
+    )
+
+    assert response.status_code == 200
+
+
+def test_filtered_request_above_ceiling_top_k_is_rejected():
+    response = client.post(
+        "/query",
+        json={"question": "Which patients have asthma?", "condition": "Asthma", "top_k": 26},
+    )
+
+    assert response.status_code == 422
+
+
+def test_unfiltered_request_above_default_top_k_is_still_rejected():
+    # No condition/drug filter - the ceiling stays at DEFAULT_TOP_K (20),
+    # unchanged by FILTERED_TOP_K_CEILING.
+    response = client.post(
+        "/query", json={"question": "Which patients have asthma?", "top_k": 21}
+    )
+
+    assert response.status_code == 422

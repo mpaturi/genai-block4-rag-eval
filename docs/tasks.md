@@ -281,3 +281,28 @@ was safe specifically for those two filter types.
       unchanged (0.2)** — this task documents the experiment only;
       adopting a new value (and whether that decision should also
       revisit `top_k`) is a separate decision left to the user
+
+**Run 11 — `FILTERED_TOP_K_CEILING` (25), a filtered-only `top_k` ceiling
+mirroring `select_threshold()`'s condition/drug gate:**
+
+- [x] Add `FILTERED_TOP_K_CEILING = 25` to `scripts/retrieve.py`, cited
+      as empirically confirmed against the real Pinecone client (not
+      assumed) and deliberately not set higher — a much bigger `top_k`
+      turns a similarity search into a table scan, the wrong tool for a
+      fully-structured query (that job belongs to the graph; see Block
+      5's docs/spec.md "what I'd do next")
+- [x] Replace `scripts/api.py`'s `top_k_in_range` `field_validator` with
+      a `model_validator(mode="after")` — it needs `condition`/`drug` to
+      pick the ceiling, which a single-field validator can't see
+- [x] Add tests to `tests/test_api.py`: filtered `top_k=25` succeeds,
+      filtered `top_k=26` returns 422, unfiltered `top_k=21` still
+      returns 422 (unchanged ceiling)
+- [x] Run the full test suite — confirm nothing else broke
+- [x] Update `docs/spec.md`'s Retrieval design and API design sections —
+      the "hard-rejects any top_k above 20" statement is now conditional
+      on whether a condition/drug filter is present
+- [x] Re-run `python scripts/run_eval.py --filtered --conditional-threshold
+      --top-k 25` and document as Run 11 in `docs/eval_results.md` —
+      measured (not guessed) recall effect vs. Run 9's `top_k=20`
+- [x] `DEFAULT_TOP_K` left unchanged (20) — Run 11 is real but modest
+      (+0.008 recall), not grounds for changing the shipped default

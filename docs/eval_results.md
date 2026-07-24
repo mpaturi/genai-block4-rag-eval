@@ -672,6 +672,68 @@ it was designed to test at the shipped `top_k`), not a recommendation.
 Whether to adopt a new `PERMISSIVE_THRESHOLD`, and whether that decision
 should also revisit `top_k`, is a separate decision left to the user.
 
+## Run 11 — `FILTERED_TOP_K_CEILING` (25), filtered `top_k` raised past the shipped default (`top_k=25`, `--filtered --conditional-threshold`)
+
+**What changed and why:** `scripts/retrieve.py` gained
+`FILTERED_TOP_K_CEILING = 25` — a `top_k` ceiling condition/drug-filtered
+requests may use, mirroring how `select_threshold()` already gates
+`PERMISSIVE_THRESHOLD` on the same condition/drug check. Unfiltered
+requests still cap at `DEFAULT_TOP_K` (20), unchanged. This run measures
+the real effect of using the new headroom — `top_k` raised from Run 9's
+shipped 20 to the new ceiling of 25, `--conditional-threshold` held the
+same, same 22-question set (18 included).
+
+```
+python scripts/run_eval.py --filtered --conditional-threshold --top-k 25
+```
+
+| Metric | Value |
+|---|---|
+| Precision | 1.000 (157/157) |
+| Recall | 0.168 (157/937) |
+| Fallback accuracy | 1.000 (4/4) |
+
+**Compared to Run 9 (`top_k=20`):** precision and fallback accuracy are
+unchanged (both properties of the metadata filter itself, not `top_k` —
+consistent with every prior `top_k` experiment). Recall moves from 0.160
+(150/937) to 0.168 (157/937), a gain of 7 correct patients — small in
+absolute terms, entirely accounted for by two questions:
+
+- **q14: 14/17 → 16/17** (+2). Run 10 traced q14's Run-9 shortfall to 3
+  specific patients excluded by rank, not score — person 3024 (best score
+  0.2338) and person 5127 (0.2334) both already clear `PERMISSIVE_THRESHOLD`
+  (0.2) but were pushed out of the top 20 by rank. The 5 extra `top_k`
+  slots here recover exactly those two. Person 8777 (0.2078) is still
+  missing — still outranked even at `top_k=25`, so q14 remains 1 patient
+  short (16/17, not 17/17).
+- **q22: 20/680 → 25/680** (+5). q22's ceiling was already established
+  (Run 8/9) as `top_k` itself, not the threshold — a 680-patient
+  demographic-only bucket has far more chunks clearing `DEFAULT_THRESHOLD`
+  than any tested `top_k`. Raising `top_k` by 5 simply returns exactly 5
+  more correct patients (precision holds at 25/25); the remaining gap to
+  680 is structural, not something any `top_k` in the validated range was
+  ever going to close (same conclusion Run 9 already reached for q22 at
+  `top_k=20`).
+
+All 10 other included questions (q01–q09, q13, q15, q16/q17/q19/q20's
+fallbacks, q21) are byte-identical to Run 9 — each already retrieved its
+full answer set at `top_k=20` (or, for q21, was already threshold-capped,
+not `top_k`-capped), so the extra headroom had nothing left to uncap for
+them.
+
+**Result: raising the filtered ceiling to 25 is a real but modest recall
+win (+0.008 absolute, +4.7% relative to Run 9), not a case for changing
+the shipped default.** `DEFAULT_TOP_K` stays 20 — the two questions that
+moved (q14, q22) needed the extra headroom for different, narrow reasons
+(one rank-boundary patient, one large demographic bucket), not a general
+across-the-board undercount. `FILTERED_TOP_K_CEILING` exists so a caller
+who explicitly wants deeper recall on a filtered query *can* ask for it up
+to 25, without opening that same headroom to unfiltered queries, where a
+larger `top_k` would cost precision instead (see `scripts/retrieve.py`'s
+`FILTERED_TOP_K_CEILING` comment on why it isn't set higher than 25).
+
+**Caveat:** same 16/18-question-subset caveat as Run 4–10.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against

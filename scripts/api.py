@@ -20,7 +20,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from scripts.generate import generate_answer
-from scripts.retrieve import meets_threshold, retrieve, select_threshold
+from scripts.retrieve import (
+    DEFAULT_TOP_K,
+    FILTERED_TOP_K_CEILING,
+    meets_threshold,
+    retrieve,
+    select_threshold,
+)
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -50,12 +56,20 @@ class QueryRequest(BaseModel):
             raise ValueError("question must not be empty or whitespace-only")
         return value
 
-    @field_validator("top_k")
-    @classmethod
-    def top_k_in_range(cls, value: int) -> int:
-        if not (1 <= value <= 20):
-            raise ValueError("top_k must be between 1 and 20")
-        return value
+    @model_validator(mode="after")
+    def top_k_in_range(self) -> "QueryRequest":
+        # A condition/drug filter gets the higher FILTERED_TOP_K_CEILING,
+        # mirroring select_threshold()'s same condition/drug gate below -
+        # needs to see both fields, so this can't be a single-field
+        # field_validator anymore.
+        ceiling = (
+            FILTERED_TOP_K_CEILING
+            if (self.condition is not None or self.drug is not None)
+            else DEFAULT_TOP_K
+        )
+        if not (1 <= self.top_k <= ceiling):
+            raise ValueError(f"top_k must be between 1 and {ceiling}")
+        return self
 
     @model_validator(mode="after")
     def lab_comparison_value_all_or_nothing(self) -> "QueryRequest":

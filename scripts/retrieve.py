@@ -49,6 +49,16 @@ PERMISSIVE_THRESHOLD = 0.2
 # Run 5, Run 7, and Run 9.
 DEFAULT_TOP_K = 20
 
+# Ceiling for filtered (condition/drug) queries only - mirrors how
+# select_threshold() gates PERMISSIVE_THRESHOLD on the same condition.
+# Confirmed empirically against the real Pinecone client (not assumed):
+# a condition/drug-filtered top_k up to 25 still returns in the same way
+# unfiltered calls do. Deliberately not set higher - a much bigger top_k
+# turns a similarity search into a table scan, the wrong tool for a
+# fully-structured query. That job belongs to the graph; see Block 5's
+# docs/spec.md "what I'd do next" for the planned follow-up.
+FILTERED_TOP_K_CEILING = 25
+
 
 def meets_threshold(score: float, threshold: float = DEFAULT_THRESHOLD) -> bool:
     """A chunk scoring exactly at the threshold still counts as a match."""
