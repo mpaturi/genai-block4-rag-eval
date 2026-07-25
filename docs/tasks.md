@@ -112,14 +112,197 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 ## Phase 6 — Verify + Docs (`phase-6-verify-docs`, base: `phase-5-eval`)
 
-- [ ] `git checkout phase-5-eval && git checkout -b phase-6-verify-docs`
-- [ ] Create `scripts/verify.py`
-- [ ] Create `scripts/run_all.py` (check_connection → create_index →
+- [x] `git checkout phase-5-eval && git checkout -b phase-6-verify-docs`
+- [x] Create `scripts/verify.py`
+- [x] Create `scripts/run_all.py` (check_connection → create_index →
       chunk+ingest → verify — does not include `run_eval.py`)
-- [ ] Run `python scripts/verify.py` — all checks PASS
-- [ ] Run `python scripts/run_all.py` — completes end-to-end
-- [ ] Write `README.md` (setup, architecture, AI-assisted workflow note)
-- [ ] Commit `scripts/verify.py`, `scripts/run_all.py`, `README.md`
-- [ ] `git push -u origin phase-6-verify-docs`
-- [ ] Open PR6: base `phase-5-eval` (or `main` if PR5 already merged) —
+- [x] Run `python scripts/verify.py` — all checks PASS
+- [x] Run `python scripts/run_all.py` — completes end-to-end
+- [x] Write `README.md` (setup, architecture, AI-assisted workflow note)
+- [x] Commit `scripts/verify.py`, `scripts/run_all.py`, `README.md`
+- [x] `git push -u origin phase-6-verify-docs`
+- [x] Open PR6: base `phase-5-eval` (or `main` if PR5 already merged) —
       ready for mentor review
+
+## Phase 7 — Metadata filter (`phase-7-metadata-filter`, base: `phase-6-verify-docs`)
+
+- [x] `git checkout phase-6-verify-docs && git checkout -b phase-7-metadata-filter`
+- [x] Verify against the installed `pinecone` client (not docs samples):
+      `filter` is a flat kwarg on `index.search()`, multiple filter keys
+      AND-combine, and equality on a list-of-strings field matches
+      "contains" — confirmed with live calls against the real index
+- [x] Add `_LAB_PROPERTY`/`_COMPARISON_OP`/`_GENDER_VALUE` and
+      `build_metadata_filter()` to `scripts/retrieve.py`, naming matched
+      exactly to Block 5's `graph_tool.py`
+- [x] Extend `retrieve()`'s signature with the optional filter fields;
+      unfiltered calls must behave identically to before this phase
+- [x] Add unit tests for `build_metadata_filter()` to
+      `tests/test_retrieve.py` (pure logic, no live Pinecone call)
+- [x] `pytest tests/test_retrieve.py` — all pass
+- [x] Add the same optional fields to `scripts/api.py`'s `QueryRequest`,
+      with the lab/comparison/value all-or-nothing validator
+- [x] Run the full test suite — confirm nothing else broke
+- [x] Commit `scripts/retrieve.py`, `scripts/api.py`, `tests/test_retrieve.py`
+- [x] Fix `scripts/api.py` to log `/query` failures server-side
+      (`logger.exception`) without leaking tracebacks into the response
+- [x] Replace `retrieve.py`'s per-call Pinecone client construction with
+      a module-level lazy singleton (`_get_index()`)
+- [x] Restore the explicit `index_name not in pc.list_indexes().names()`
+      check in `scripts/ingest.py`, matching `create_index.py`'s pattern
+- [x] Treat whitespace-only text as empty in `chunk_records.py`'s
+      `chunk_text()` (`not text.strip()`, not `text == ""`)
+- [x] Fix `scripts/verify.py`'s `main()` to fail cleanly (`[FAIL]`, exit
+      1) instead of crashing on a nonexistent index name — same fix
+      applied independently on both `phase-6-verify-docs` and this branch
+- [x] Add `test_build_metadata_filter_unrecognized_gender_raises_before_pinecone`
+      to `tests/test_retrieve.py`
+- [x] Merge `phase-6-verify-docs` into `phase-7-metadata-filter` to bring
+      in the four regression fixes and the `verify.py` fix phase-6 got
+      independently — resolved conflicts by reading the merged files, not
+      trusting the merge blindly
+- [x] Add `run_eval.py --filtered` mode with a translation table bridging
+      `questions.json`'s casual phrasing to Pinecone's stored strings
+- [x] Document Run 4 (filtered eval, `top_k=5`/`threshold=0.4`) in
+      `docs/eval_results.md` — precision/recall/fallback accuracy vs. the
+      same 16-question subset unfiltered
+- [x] Document Run 5 (filtered, `top_k=25`) — confirms recall's
+      remaining gap is the score threshold, not `top_k`, once filtered
+- [x] Investigate the real score floor among genuinely-missed correct
+      patients (corrected per-patient methodology, not per-chunk) and
+      document Run 6 (filtered, `threshold=0.2`) — recall 0.287→0.884,
+      fallback accuracy holds at 1.000 filtered vs. collapses to 0.000
+      unfiltered at the same threshold
+- [x] Document Run 7 (filtered, `top_k=20`) — closes the `top_k=15` cap
+      found in Run 6's per-question detail (q01/q06/q08)
+- [x] Raise `retrieve.py`'s `DEFAULT_TOP_K` and `api.py`'s
+      `QueryRequest.top_k` default from 5 to 15, backed by Run 5's
+      observed per-question ceiling (11), not a round guess
+- [x] `git push -u origin phase-7-metadata-filter`
+- [x] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already
+      merged) — opened by the user
+
+**PR7 review fixup (Leone):** the live API always used
+`DEFAULT_THRESHOLD` regardless of which filter was active, so a
+condition/drug filter never got the permissive threshold Run 6 showed
+was safe specifically for those two filter types.
+
+- [x] Add `PERMISSIVE_THRESHOLD` and `select_threshold()` to
+      `scripts/retrieve.py` — permissive only for `condition`/`drug`
+      filters, never `gender`/`lab`/`birth_decade`, since only
+      condition/drug can structurally return zero candidates for an
+      untracked topic
+- [x] Wire `select_threshold()` into `scripts/api.py`'s `/query` handler
+      — both the fallback check and the `relevant_chunks` filter must use
+      the same computed threshold
+- [x] Add unit tests for `select_threshold()` to `tests/test_retrieve.py`
+- [x] Add `tests/test_api.py` — integration-style test proving a
+      gender-only filter does *not* go permissive end-to-end (the one
+      thing `select_threshold()`'s own unit tests can't prove by
+      themselves)
+- [x] Update `docs/spec.md`'s Known limitations and Retrieval design
+      sections to describe `select_threshold()` and cite Run 6
+- [x] Run the full test suite — confirm nothing else broke
+- [x] Re-run `python scripts/run_eval.py --filtered --threshold 0.2` as a
+      regression sanity check against the already-documented Run 6
+      numbers (this run itself is unaffected — `run_eval.py` isn't wired
+      to `select_threshold()`, only `api.py` is)
+- [x] Manually hit `POST /query` once with a condition filter and an
+      out-of-scope-sounding question (goes permissive), and once with
+      only a gender filter and the same question (stays at
+      `DEFAULT_THRESHOLD`, falls back)
+- [x] Commit referencing the review feedback, push to
+      `phase-7-metadata-filter` — no new PR, lands as additional commits
+      on PR7
+
+**Run 8 — demographic-only questions + `select_threshold()` wired into
+`run_eval.py`:**
+
+- [x] Add q21 (`gender: M`, `birth_decade: 1930`) and q22 (`gender: F`,
+      `birth_decade: 1990`) to `data/eval/questions.json`, both
+      answerable, no condition/drug/lab
+- [x] Verify ground truth via `python scripts/build_eval_answer_key.py`
+      against the real data rather than trusting the planned counts —
+      found and documented a discrepancy (129/691 planned vs. 128/680
+      actual, caused by duplicate rows in `person.csv`, the same
+      dirty-data pattern already known from `visit_occurrence.csv`)
+- [x] Add `--conditional-threshold` to `scripts/run_eval.py` — computes
+      each question's threshold via `select_threshold()` from its own
+      translated filters instead of one flat `--threshold`; only valid
+      with `--filtered`, enforced with a clear `parser.error()`
+- [x] Run `--filtered --conditional-threshold` (`top_k=15`, matching Run
+      6) and document as Run 8 in `docs/eval_results.md`
+- [x] Confirm the original 16 questions' contribution is byte-identical
+      to Run 6, with the math showing where the difference in the
+      18-question aggregate comes from
+- [x] Document the explicit caveat: this run cannot test the actual
+      off-topic-question risk `select_threshold()`'s condition/drug
+      restriction protects against, since ground truth here is
+      filter-derived, not text-aware — that risk stays covered only by
+      `tests/test_api.py`. Q21/q22's clean precision numbers do not mean
+      the gender/birth_decade exclusion was unnecessary.
+
+**Run 9 — raise `DEFAULT_TOP_K` to 20:**
+
+- [x] Raise `scripts/retrieve.py`'s `DEFAULT_TOP_K` and `scripts/api.py`'s
+      `QueryRequest.top_k` default from 15 to 20, citing Run 7 and
+      `select_threshold()`'s live production behavior as the
+      justification (condition/drug-filtered queries — the common case
+      for Block 5 — now get the permissive threshold automatically)
+- [x] Update `docs/spec.md`'s Retrieval design and API design sections
+      with the full 5 → 15 → 20 revision history
+- [x] Run `--filtered --conditional-threshold --top-k 20` and document as
+      Run 9 in `docs/eval_results.md`
+- [x] Confirm the original 16 questions now match Run 7's per-question
+      output exactly; confirm q21 unchanged from Run 8 (still
+      threshold-capped, not top_k-capped — consistent with Run 8's
+      explanation, not a contradiction); confirm q22 moved by exactly
+      the `top_k` increase, still structurally capped by its 680-patient
+      ground-truth size
+
+**Run 10 — exploratory: sweep `PERMISSIVE_THRESHOLD` candidate floors
+(0.2/0.1/0.0/-0.01):**
+
+- [x] Add `run_eval.py --permissive-threshold` override (requires
+      `--conditional-threshold`) — substitutes a candidate floor for
+      condition/drug-filtered questions only, applied locally in
+      `run_eval.py`, without modifying `select_threshold()` or
+      `scripts/retrieve.py`'s actual `PERMISSIVE_THRESHOLD` constant
+- [x] Sanity-check the unset-override run reproduces Run 9 exactly
+      before trusting the swept values
+- [x] Run all four candidate floors and document as Run 10 in
+      `docs/eval_results.md`
+- [x] Report the real result honestly, including that it contradicted
+      the stated hypothesis: all four floors produced byte-identical
+      output, because `top_k=20` truncates the candidate pool by score
+      rank before threshold filtering ever runs — q14's remaining gap is
+      `top_k`-bound, not threshold-bound, traced to the exact 3 missing
+      patients and their true scores (2 of which already clear 0.2)
+- [x] **`scripts/retrieve.py`'s `PERMISSIVE_THRESHOLD` constant left
+      unchanged (0.2)** — this task documents the experiment only;
+      adopting a new value (and whether that decision should also
+      revisit `top_k`) is a separate decision left to the user
+
+**Run 11 — `FILTERED_TOP_K_CEILING` (25), a filtered-only `top_k` ceiling
+mirroring `select_threshold()`'s condition/drug gate:**
+
+- [x] Add `FILTERED_TOP_K_CEILING = 25` to `scripts/retrieve.py`, cited
+      as empirically confirmed against the real Pinecone client (not
+      assumed) and deliberately not set higher — a much bigger `top_k`
+      turns a similarity search into a table scan, the wrong tool for a
+      fully-structured query (that job belongs to the graph; see Block
+      5's docs/spec.md "what I'd do next")
+- [x] Replace `scripts/api.py`'s `top_k_in_range` `field_validator` with
+      a `model_validator(mode="after")` — it needs `condition`/`drug` to
+      pick the ceiling, which a single-field validator can't see
+- [x] Add tests to `tests/test_api.py`: filtered `top_k=25` succeeds,
+      filtered `top_k=26` returns 422, unfiltered `top_k=21` still
+      returns 422 (unchanged ceiling)
+- [x] Run the full test suite — confirm nothing else broke
+- [x] Update `docs/spec.md`'s Retrieval design and API design sections —
+      the "hard-rejects any top_k above 20" statement is now conditional
+      on whether a condition/drug filter is present
+- [x] Re-run `python scripts/run_eval.py --filtered --conditional-threshold
+      --top-k 25` and document as Run 11 in `docs/eval_results.md` —
+      measured (not guessed) recall effect vs. Run 9's `top_k=20`
+- [x] `DEFAULT_TOP_K` left unchanged (20) — Run 11 is real but modest
+      (+0.008 recall), not grounds for changing the shipped default

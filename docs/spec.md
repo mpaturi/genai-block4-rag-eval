@@ -350,17 +350,63 @@ time, not from a hardcoded guess baked into this doc:
 
 ## Retrieval design (Job 1)
 
-- Input: a question string, optional `top_k` (default 5)
+- Input: a question string, optional `top_k` (default 20, revision
+  history: initial 5 → 15 (Phase 7, Run 5) → 20 (this later fixup, Run
+  7)). Run 5 (`top_k=25`, `threshold=0.4`, a flat unfiltered-style
+  threshold) measured the highest per-question `retrieved` count actually
+  observed across all 12 answerable questions in the filtered eval subset
+  at 11 (q01 and q02) — every other question retrieved fewer — so 15 was
+  picked as a ~36% margin above that. But once `select_threshold()`
+  shipped live in `scripts/api.py` (see below), condition/drug-filtered
+  queries automatically get the permissive 0.2 threshold instead of 0.4 —
+  and Run 7 (`top_k=20`, `threshold=0.2`) showed `top_k=15` still
+  truncated 3 of 12 tested questions (q01, q06, q08) under that
+  threshold, while `top_k=20` closed nearly all of that gap (recall
+  0.884 → 0.977, Run 6 → Run 7). Since a real caller (Block 5) typically
+  sends condition/drug-filtered queries — exactly the regime where the
+  permissive threshold is now the common case, not the exception — 20 is
+  the better-supported default. See `docs/eval_results.md`'s Run 5, Run
+  7, and Run 9, and `scripts/retrieve.py`'s `DEFAULT_TOP_K` for where
+  this lives in code.
+- **`FILTERED_TOP_K_CEILING` (25) — a higher `top_k` ceiling for
+  condition/drug-filtered queries only, mirroring how
+  `select_threshold()` gates `PERMISSIVE_THRESHOLD` on the same
+  condition.** Confirmed empirically against the real Pinecone client
+  (not assumed): a condition/drug-filtered `top_k=25` returns cleanly.
+  Deliberately not set higher — a much bigger `top_k` turns a similarity
+  search into a table scan, the wrong tool for a fully-structured query;
+  that job belongs to the graph (see Block 5's `docs/spec.md` "what I'd
+  do next" for the planned follow-up). See `docs/eval_results.md`'s Run
+  11 and `scripts/retrieve.py`'s `FILTERED_TOP_K_CEILING` for where this
+  lives in code.
 - Pinecone embeds the question automatically (same model as ingestion) and
   returns the `top_k` most similar chunks, each with a similarity score
   (0 to 1) and its full metadata
-- **Score threshold: 0.75 (starting default).** If the single best-matching
-  chunk scores below this threshold, retrieval is treated as empty — nothing
-  relevant was found
+- **Score threshold: 0.4 (default, revised from an initial 0.75 in Phase
+  5).** If the single best-matching chunk scores below this threshold,
+  retrieval is treated as empty — nothing relevant was found. The initial
+  0.75 was carried over from Phase 3's self-match check (querying with a
+  chunk's own exact text, which scored 0.82–0.84) — a much easier case
+  than a natural-language question matched against chunk text. Phase 5's
+  eval run showed real question scores cluster ~0.4–0.55, so 0.75 made
+  every question fall back regardless of relevance (0 precision/recall
+  across all 15 answerable questions). See `docs/eval_results.md`'s Run 1
+  vs Run 2 for the measured comparison and `scripts/retrieve.py`'s
+  `DEFAULT_THRESHOLD` for where this lives in code.
 - This threshold is one of the two candidate parameters for the required
-  eval experiment in Phase 5 (the other being `top_k`) — Phase 5 will run
-  the eval at two different values and document which one scores better,
-  rather than treating 0.75 as fixed
+  eval experiment in Phase 5 (the other being `top_k`) — Phase 5 ran the
+  eval at two different values (0.75 and 0.4) and documented which one
+  scores better; 0.4 was subsequently adopted as the new default
+- **Permissive threshold for condition/drug-filtered queries (Phase 7).**
+  `scripts/api.py`'s `/query` handler no longer always uses
+  `DEFAULT_THRESHOLD` — it computes the threshold per request via
+  `scripts/retrieve.py`'s `select_threshold(condition=..., drug=...)`,
+  which returns `PERMISSIVE_THRESHOLD` (0.2) whenever a `condition` or
+  `drug` filter is present, and `DEFAULT_THRESHOLD` (0.4) otherwise. Both
+  the fallback check and the `relevant_chunks` filter use the same
+  computed threshold. See Known limitations for why only `condition`/
+  `drug` (not `gender`/`lab`/`birth_decade`) can safely trigger this, and
+  `docs/eval_results.md`'s Run 6 for the measured evidence.
 - See Known limitations for why this single threshold does double duty as
   both the relevance gate and the out-of-scope gate.
 - The threshold comparison itself (`score >= threshold`) is pure logic once
@@ -380,6 +426,58 @@ time, not from a hardcoded guess baked into this doc:
   the first real ingestion, runs one empirical check — search using a
   chunk's own text and confirm it comes back as its own best match —
   before any threshold logic is trusted.
+
+## Metadata filter design (Phase 7)
+
+- Adds optional structured filters alongside semantic search: `condition`,
+  `drug`, `lab`+`comparison`+`value`, `gender`, `birth_decade` — these
+  narrow Pinecone's search to chunks whose metadata matches, on top of
+  (not instead of) the existing similarity search and score threshold.
+- Built entirely on metadata already present in the index: Block 3's
+  `conditions`/`drugs` list fields (added in Phase 6's data refresh) plus
+  the existing `gender` and `year_of_birth_band` fields — no new metadata
+  or re-ingestion required.
+- Lab/comparison naming (`_LAB_PROPERTY` mapping `"SBP"/"BMI"/"Glucose"/
+  "HbA1c"` to the stored `latest_*` field names, `_COMPARISON_OP` mapping
+  `"above"/"below"`) matches Block 5's `graph_tool.py` exactly, so both
+  tools present identical shorthand to a caller/agent. The underlying
+  operator differs by necessity: Block 5 emits Cypher `>`/`<`, this emits
+  Pinecone filter operators `$gt`/`$lt` — both strict inequalities, so
+  "above"/"below" mean the same thing (never inclusive) in both tools.
+- Value mapping, not pass-through: `gender` shorthand `"M"`/`"F"` maps to
+  Pinecone's stored `"Male"`/`"Female"`; `birth_decade` (an int, e.g.
+  `1970`) maps to Pinecone's stored `"{decade}s"` string (e.g. `"1970s"`).
+  Passing either field through unmapped would silently match nothing,
+  since Pinecone's stored values never look like `"M"` or `1970`.
+- `lab`, `comparison`, `value` are a trio: either all three are present or
+  all three are absent. A partial combination raises before any Pinecone
+  call — an incomplete lab filter is a caller bug, not a "no filter"
+  fallback. `condition`, `drug`, `gender`, `birth_decade` are each
+  independently optional; any combination, or none, is valid.
+- An unrecognized `lab` or `comparison` value raises before ever calling
+  Pinecone (`.get()` lookups against the fixed whitelists above, never raw
+  indexing) — same fail-fast principle as Block 5's `graph_tool.py`.
+- No filter fields passed → the filter builder returns `None`/empty, and
+  retrieval behaves identically to pre-Phase-7 — existing callers (eval
+  harness, prior API requests) see no behavior change.
+- **Verified against the installed `pinecone` client (v9.1.0), not docs
+  samples, before wiring this up for real** — docs samples mix calling
+  conventions across client versions:
+  - `index.search()` takes `filter` as a flat keyword argument (confirmed
+    from the installed client's own method signature) — no need for the
+    nested `query={"inputs": ..., "top_k": ..., "filter": ...}` form.
+  - Multiple top-level filter keys AND-combine, not OR — confirmed with a
+    live call combining a `conditions` filter, a `gender` filter, and a
+    `latest_sbp` `$gt` filter together; every returned hit satisfied all
+    three simultaneously.
+  - Equality filtering against a list-of-strings metadata field
+    (`conditions`, `drugs`) matches "list contains this value," not
+    literal equality against the whole list — confirmed with a live call:
+    filtering on `conditions: "Essential hypertension"` correctly matched
+    chunks whose `conditions` list held that value alongside others, not
+    only chunks whose list was exactly `["Essential hypertension"]`.
+- Not in scope: forwarding these fields from Block 5's `rag_tool.py` —
+  that's a separate change in the Block 5 repo once this merges.
 
 ## Generation design (Job 2)
 
@@ -410,12 +508,33 @@ Block 4 to consume.
 
 Request:
 ```json
-{ "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 5 }
+{ "question": "Which patients have type 2 diabetes and take metformin?", "top_k": 20 }
 ```
-`top_k` is optional (default 5), validated to an integer between 1 and 20
+`top_k` is optional (default 20), validated to an integer between 1 and a
+ceiling that depends on whether a `condition` or `drug` filter is present
+in the same request — 20 unfiltered, 25 filtered (`FILTERED_TOP_K_CEILING`)
 — out-of-range or invalid values return HTTP 422 before Pinecone is ever
 called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.
+
+**Phase 7 — optional metadata filters,** all `None`/absent by default (a
+request with none of these behaves exactly as before Phase 7):
+```json
+{
+  "question": "Which hypertensive men have a high latest SBP?",
+  "condition": "Essential hypertension",
+  "drug": null,
+  "lab": "SBP",
+  "comparison": "above",
+  "value": 140,
+  "gender": "M",
+  "birth_decade": 1970
+}
+```
+`lab`, `comparison`, `value` must be all present or all absent — a partial
+combination returns HTTP 422 before Pinecone is called. `condition`,
+`drug`, `gender`, `birth_decade` are each independently optional. See
+Metadata filter design for the value-mapping and validation details.
 
 Response (relevant results found):
 ```json
@@ -605,8 +724,9 @@ non-deterministic parts, and it matters a lot which is which:
 | 4 | `phase-4-retrieve-generate` | `scripts/retrieve.py`, `scripts/generate.py`, `scripts/api.py`, `tests/test_retrieve.py` |
 | 5 | `phase-5-eval` | `data/raw/condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`, `measurement.csv`, `visit_occurrence.csv` (copied from Block 1, needed only here for ground truth), `scripts/concepts.py` (copied from Block 1, concept-ID mappings for the answer-key builder), `data/eval/questions.json`, `scripts/build_eval_answer_key.py`, `scripts/run_eval.py`, `docs/eval_results.md` (includes the parameter experiment) |
 | 6 | `phase-6-verify-docs` | `scripts/run_all.py`, `scripts/verify.py`, `README.md` |
+| 7 | `phase-7-metadata-filter` | `scripts/retrieve.py` (`build_metadata_filter()`), `scripts/api.py` (new `QueryRequest` fields), `tests/test_retrieve.py` |
 
-Each phase gets its own PR (6 PRs total). `phase-1-spec` branches from
+Each phase gets its own PR (7 PRs total). `phase-1-spec` branches from
 `main`; every phase after that branches from the tip of the previous
 phase's branch rather than `main`, since an earlier phase's PR may not be
 merged yet when the next phase starts — this is what Block 3 actually did.
@@ -632,13 +752,32 @@ each design section, this is just the index:
 - 200-char chunking threshold is dataset-specific, not general-purpose (see Chunking design)
 - No minimum eval score is enforced (see Eval harness design)
 - Pinecone and Claude failures share one generic error response (see API design)
-- Score threshold (0.75) serves two jobs at once — relevance gating and
+- Score threshold serves two jobs at once — relevance gating and
   out-of-scope rejection — which may want different cutoffs; templated
   summaries sharing clinical vocabulary make it possible for an
   out-of-scope question to still score above threshold against an
-  unrelated in-scope patient. Not addressed with a second threshold;
-  captured by fallback accuracy and the Phase 5 threshold experiment (see
-  Retrieval design, Eval harness design).
+  unrelated in-scope patient. This is not just theoretical:
+  `docs/eval_results.md`'s Run 2 shows it happening for real — lowering
+  the unfiltered threshold to 0.4 caused one deliberately-unanswerable
+  question (chronic kidney disease, outside the whitelist) to incorrectly
+  clear the cutoff and skip the fallback. **Partially addressed in Phase
+  7:** `scripts/retrieve.py`'s `select_threshold()` now uses a second,
+  more permissive threshold (`PERMISSIVE_THRESHOLD = 0.2`) whenever a
+  `condition` or `drug` metadata filter is present, since only those two
+  filter types can structurally return zero candidates for an untracked
+  topic (a `condition`/`drug` value outside the corpus simply matches no
+  patient, filter or no filter) — `gender`/`lab`/`birth_decade` filters
+  give no such protection and always keep the stricter default. Run 6
+  (`docs/eval_results.md`) is the measured evidence: the same 0.2
+  threshold raises filtered recall from 0.287 to 0.884 with fallback
+  accuracy holding at 1.000, while the identical 0.2 threshold with no
+  filter collapses fallback accuracy to 0.000. This is a scoped fix, not
+  a complete one — an off-topic question paired with a condition/drug
+  filter that happens to share vocabulary with a real, tracked condition
+  (e.g. asking about "diabetes symptoms" while filtering on
+  `condition="Diabetes mellitus type 2"`) could still slip through the
+  permissive threshold, since the filter alone doesn't verify the
+  question itself is genuinely about that condition.
 
 ## Functional requirements
 

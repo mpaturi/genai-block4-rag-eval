@@ -122,6 +122,12 @@ def patients_with_lab_threshold(
     logic, which drops these rows for the same reason. Must happen before
     picking the latest reading, or a patient whose most recent row is a
     sentinel loses an otherwise-valid earlier reading.
+
+    Sorted by measurement_date then measurement_id (both ascending) - a
+    date-only sort leaves "latest" undefined when a patient has two
+    readings for the same lab on the same date (815 such cases in the
+    real data); measurement_id as a tiebreaker makes the choice
+    deterministic instead of depending on sort-order incidentals.
     """
     concept_id = LAB_CONCEPT_ID.get(lab_name.lower())
     if concept_id is None:
@@ -129,7 +135,7 @@ def patients_with_lab_threshold(
     lab_rows = measurements_df[measurements_df["measurement_concept_id"] == concept_id]
     lab_rows = lab_rows[lab_rows["value_as_number"] > 0]
     latest = (
-        lab_rows.sort_values("measurement_date")
+        lab_rows.sort_values(["measurement_date", "measurement_id"])
         .groupby("person_id")
         .tail(1)
         .set_index("person_id")["value_as_number"]

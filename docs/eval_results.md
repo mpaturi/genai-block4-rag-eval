@@ -4,11 +4,15 @@ This file is produced by `scripts/run_eval.py` (Phase 5) and is committed as
 evidence for the "documents ≥1 experiment" acceptance criterion — see
 `docs/spec.md`'s Eval harness design section.
 
-All runs below use the same 20-question set in `data/eval/questions.json`
-(15 answerable, 5 deliberately unanswerable); each run's specific `top_k`
-and `threshold` settings are listed in its own heading below. Ground truth
-was independently recomputed by `scripts/build_eval_answer_key.py` and
-spot-checked by hand (see Spot-check section below) before any run.
+Runs 1–3 use the original 20-question set in `data/eval/questions.json`
+(15 answerable, 5 deliberately unanswerable). Runs 4–7 use a 16-question
+filtered subset (see Run 4 for which questions and why). Run 8 adds two
+new demographic-only questions (q21, q22), bringing the question set to
+22 total and the filtered subset to 18 — see Run 8 for details. Each
+run's specific `top_k`/`threshold`/question-subset is documented in its
+own heading below. Ground truth was independently recomputed by
+`scripts/build_eval_answer_key.py` and spot-checked by hand (see
+Spot-check section below) before any run.
 
 ## Known limitations
 
@@ -75,6 +79,14 @@ patients in their ground-truth set — recall is structurally bounded by
 (not attempted here, since spec requires only one changed setting) would
 likely move recall further than threshold tuning alone can.
 
+**Adopted as the new default:** based on this experiment, `0.4` was
+subsequently adopted as `scripts/retrieve.py`'s `DEFAULT_THRESHOLD`,
+replacing the original `0.75` — `0.75` returned zero relevant results for
+every real question tested, which is worse than the precision/fallback
+tradeoff `0.4` introduces. Run 1 and Run 2 above are left as originally
+recorded; they're the documented experiment this file exists to capture,
+not something to retroactively rewrite.
+
 ## Run 3 — experiment: raise `top_k` to 25 (`top_k=25`, `threshold=0.4`)
 
 | Metric | Value |
@@ -111,6 +123,617 @@ accuracy is unchanged at 0.800 (`q20` is still the same, sole miss) — as
 expected, since the fallback decision depends only on the single top-ranked
 chunk's score, which `top_k` does not affect.
 
+## Run 4 — experiment: add metadata filters (Phase 7) (`top_k=5`, `threshold=0.4`, filtered)
+
+**Question set:** 16 of the 20 questions in `data/eval/questions.json`, not
+all 20 — `translate_filters()` in `scripts/run_eval.py` excludes 4
+questions whose filters `build_metadata_filter()` cannot represent:
+
+- **q10, q11, q12** (`min_visit_count`): no matching
+  `build_metadata_filter()` parameter exists — visit count isn't one of
+  the filterable fields.
+- **q18** (`lab: "cholesterol"`): `build_metadata_filter()` validates
+  `lab` against a fixed 4-value whitelist (`SBP`/`BMI`/`Glucose`/`HbA1c`)
+  and raises `RAGFilterError` for anything else, by design —
+  `cholesterol` is deliberately outside that whitelist (this is exactly
+  why q18 is one of the 5 unanswerable questions), so it can't be
+  translated at all, not just imperfectly matched.
+
+No question used a non-strict lab operator (`>=`/`<=`) — checked
+empirically against the real file; every lab-threshold question uses
+strict `>`.
+
+**Translation note:** `data/eval/questions.json` predates the Phase 7
+metadata-filter integration and reuses `concepts.py`'s casual condition
+and lab phrasing (e.g. `"type 2 diabetes"`, `"sbp"`), which doesn't match
+Pinecone's stored metadata strings (Block 3's own clinical naming, e.g.
+`"Diabetes mellitus type 2"`, the `"SBP"` `_LAB_PROPERTY` key).
+`scripts/run_eval.py`'s `_CONDITION_NAME_TRANSLATION`/
+`_DRUG_NAME_TRANSLATION`/`_LAB_NAME_TRANSLATION` tables exist to bridge
+that, **scoped to this eval harness only** — this is not a bug or gap in
+`retrieve.py`/`build_metadata_filter()` itself. A real caller (Block 5's
+`graph_tool.py`) already sends the correctly-formatted clinical name
+straight into an exact-match Cypher parameter against Neo4j, which shares
+Block 3's naming with Pinecone — no translation happens on Block 5's side
+either.
+
+| Metric | Filtered (16 Qs) | Unfiltered, same 16 Qs | Run 2 (original 20 Qs, unfiltered) |
+|---|---|---|---|
+| Precision | 1.000 (37/37) | 0.232 (13/56) | 0.197 (14/71) |
+| Recall | 0.287 (37/129) | 0.101 (13/129) | 0.073 (14/192) |
+| Fallback accuracy | 1.000 (4/4) | 0.750 (3/4) | 0.800 (4/5) |
+
+**Baseline:** same `top_k=5`/`threshold=0.4` as Run 2 — filters are the
+only variable changed. Compared primarily against a same-question-subset
+unfiltered control (middle column) rather than Run 2's original totals
+(right column), since Run 2's 192-actual-patient total and 5-question
+fallback set include the 4 questions this run excludes — comparing
+straight against Run 2's published totals would conflate "filters help"
+with "different questions."
+
+**Result:** Adding metadata filters is a large, unambiguous win on this
+subset. Precision jumps from 0.232 to 1.000 — every retrieved chunk is a
+correct patient, because the metadata filter narrows Pinecone's candidate
+set to exact matches (condition/drug/gender/birth_decade/lab-threshold)
+before similarity ranking is even applied, so a wrong-patient chunk has no
+way to be returned. Recall nearly triples (0.101 → 0.287) for the same
+reason recall stayed low in Run 2/3: `top_k=5` still caps how many chunks
+come back per question, but now every one of those 5 slots is a true
+positive instead of mostly noise. Fallback accuracy reaches a perfect
+1.000 (up from 0.750): `q20` (chronic kidney disease, outside the
+condition whitelist) — the same question that broke Run 2's fallback
+accuracy — now correctly falls back, because filtering on
+`condition="chronic kidney disease"` (left untranslated, since it has no
+whitelist entry) matches zero patients, so there's nothing for a lucky
+semantic-score match to ride in on.
+
+**Caveat:** this comparison is not fully apples-to-apples with Run 2/3 —
+it covers a 16-question subset, and its fallback-accuracy denominator (4)
+is smaller than Run 2/3's (5). The precision/recall improvement is real
+(verified against the identical 16 questions, filtered vs. unfiltered, in
+the middle two columns above), but the headline numbers aren't directly
+comparable to Run 1–3's totals without accounting for the excluded
+questions.
+
+## Run 5 — experiment: raise `top_k` to 25, filtered (`top_k=25`, `threshold=0.4`, filtered)
+
+Same 16-question subset and translation tables as Run 4 — see Run 4 for
+why q10–q12 and q18 are excluded and how `scripts/run_eval.py`'s
+`translate_filters()` bridges `questions.json`'s phrasing to Pinecone's
+stored strings. `top_k` is the only variable changed relative to Run 4,
+mirroring Run 3's relationship to Run 2.
+
+| Metric | Filtered, `top_k=25` | Unfiltered, same 16 Qs, `top_k=25` | Run 4 (filtered, `top_k=5`, same 16 Qs) |
+|---|---|---|---|
+| Precision | 1.000 (57/57) | 0.143 (33/230) | 1.000 (37/37) |
+| Recall | 0.442 (57/129) | 0.256 (33/129) | 0.287 (37/129) |
+| Fallback accuracy | 1.000 (4/4) | 0.750 (3/4) | 1.000 (4/4) |
+
+**Precision: held at 1.000, exactly.** Raising `top_k` from 5 to 25 while
+filtered doesn't introduce a single false positive (57/57, same as Run
+4's 37/37) — expected, since the metadata filter narrows Pinecone's
+candidate set to exact matches before ranking, so asking for more results
+just returns more *correct* patients, never wrong ones. This is the one
+metric filtering fixes structurally, independent of `top_k`.
+
+**Recall: a real improvement, from 0.287 to 0.442 (+0.155, ~54% relative)**
+— filtering doesn't just help precision, it lets `top_k` actually matter
+for recall too, the same way Run 3 found for the unfiltered case. But the
+improvement isn't `top_k`-capped either: no included question retrieved
+anywhere close to the full 25 slots (the highest was q01/q02 at 11 of
+25), so the remaining gap to 1.0 recall is the 0.4 score threshold, not
+`top_k` — same conclusion Run 3 reached for the unfiltered case, now
+confirmed to hold with filtering on too. Two questions (q03, q05) reached
+their full per-question answer set (retrieved == actual); most others
+still fall well short (e.g. q08: 2 of 18, q06: 2 of 17), because a
+patient's chunk still has to individually clear 0.4 similarity to the
+question text, filter match or not.
+
+**Fallback accuracy: held at 1.000**, same as Run 4 — `top_k` doesn't
+affect the fallback decision (it depends only on the top-ranked chunk's
+score), so this metric was never expected to move between Run 4 and 5.
+
+**Filtered vs. unfiltered at the same `top_k=25` (left vs. middle
+column):** the same large gap seen at `top_k=5` in Run 4 persists at
+`top_k=25` — precision 1.000 vs. 0.143, recall 0.442 vs. 0.256, fallback
+accuracy 1.000 vs. 0.750. Raising `top_k` helps both filtered and
+unfiltered recall, but filtering remains the dominant factor throughout —
+unfiltered `top_k=25` recall (0.256) still trails filtered `top_k=5`
+recall (0.287, Run 4's right column above), meaning a 5x larger
+unfiltered candidate pool still retrieves fewer correct patients than a
+tightly-filtered pool five times smaller.
+
+**Caveat:** same 16-question-subset caveat as Run 4 — not directly
+comparable to Run 1–3's original 20-question totals without accounting
+for the 4 excluded questions.
+
+## Run 6 — experiment: lower `threshold` to 0.2, filtered (`top_k=15`, `threshold=0.2`, filtered)
+
+Same 16-question subset and translation tables as Run 4/5.
+
+**What changed and why — investigated the same way 0.75→0.4 was chosen in
+Phase 5, not guessed.** A one-off diagnostic script (not committed)
+retrieved every metadata-filtered candidate for each of the 12 included
+answerable questions (`top_k=100`, well above any included question's
+answer-set size) and checked each one against the ground-truth answer
+key.
+
+*First pass had a bug worth naming, because it changed the conclusion:*
+looking at every chunk independently made a patient's low-scoring second
+chunk look like an "excluded true positive" even when their first chunk
+already cleared 0.4 — but `run_eval.py` dedupes to `person_id`, so that
+patient was never actually missed. Correcting this to the **best score
+per correct person_id** is what "excluded but actually correct" has to
+mean here — a patient counts as excluded only if *none* of their chunks
+clear the threshold.
+
+With that correction: 72 correct patients (of 129 total across the 12
+questions) are currently excluded at `threshold=0.4`, with best-chunk
+scores ranging **0.2078 to 0.3980**. The real floor is **0.2078**
+(person 8777, q14) — rounded down to a clean **0.2**, the same
+one-decimal rounding Phase 5 used (0.419 → 0.4).
+
+**A second, more important finding from the same diagnostic:** across
+all 175 metadata-filtered chunks checked against the 12 included
+answerable questions, **zero were false positives** — every chunk that
+passed the filter belonged to a ground-truth-correct patient, regardless
+of its score (down to -0.0045). Unlike Phase 5's unfiltered case, where
+lowering the threshold risks pulling in semantically-similar-but-wrong
+patients, the metadata filter has already restricted the candidate pool
+to exact-criteria matches before any score is considered — so within
+that pool, there's no false-positive risk to trade off against recall at
+all. This is why 0.2 (a threshold Run 2 would never have tolerated
+unfiltered) is safe to test here.
+
+| Metric | Filtered, `top_k=15`/`threshold=0.2` | Unfiltered, same 16 Qs, same settings | Run 4 (filtered, `top_k=5`/`threshold=0.4`) |
+|---|---|---|---|
+| Precision | 1.000 (114/114) | 0.156 (28/180) | 1.000 (37/37) |
+| Recall | 0.884 (114/129) | 0.217 (28/129) | 0.287 (37/129) |
+| Fallback accuracy | 1.000 (4/4) | 0.000 (0/4) | 1.000 (4/4) |
+
+**Result — both metrics checked honestly:**
+
+- **Precision: held at exactly 1.000** (114/114), same as every filtered
+  run so far. Confirms the diagnostic's finding wasn't a fluke restricted
+  to the 72 patients sampled — the full filtered run introduces zero
+  false positives at `threshold=0.2`.
+- **Recall: a very large, real jump — 0.287 → 0.884** (+0.597). This is
+  the direct, expected result of capturing the 72 genuine misses the
+  diagnostic found: 8 of the 12 included answerable questions now
+  retrieve every single ground-truth patient (`retrieved == actual` for
+  q02, q03, q04, q05, q07, q09, q13, q15). The two questions still
+  furthest from complete (q06: 15/17, q08: 15/18) are capped by
+  `top_k=15`, not the threshold — both retrieved exactly 15, the max
+  allowed.
+- **Fallback accuracy: the hypothesis is confirmed, dramatically.**
+  Filtered, it holds at a perfect 1.000 — unchanged from Run 4/5. But the
+  same-subset **unfiltered** control at this same `threshold=0.2`
+  collapses to **0.000 (0/4)** — every one of the 4 unanswerable
+  questions incorrectly clears the threshold without a filter. The
+  mechanism is structural, not a close call: q16/q17/q19/q20's
+  conditions (`asthma`, `migraine`, `depression`, `chronic kidney
+  disease`) don't exist anywhere in the corpus under any spelling, so the
+  metadata filter returns **zero candidates for these questions at any
+  `top_k`, before the score threshold is ever evaluated** — confirmed
+  directly (`retrieve(..., top_k=15, **filters)` returns `[]` for all 4).
+  Filtering, not the threshold, is doing 100% of the out-of-scope
+  rejection now; the threshold is free to move for recall's sake without
+  touching fallback accuracy at all, exactly the opposite of Run 2's
+  unfiltered case where lowering the threshold cost 1.000 → 0.800.
+
+**Caveat:** same 16-question-subset caveat as Run 4/5. Also, 0.2 is a
+floor observed on this 20-question eval set, not a proven universal
+floor — a live caller's question could still produce a correct match
+scoring below 0.2 that this data never exercised. The zero-false-positive
+property is what makes this safe to test aggressively, not a guarantee
+that 0.2 is the true minimum.
+
+## Run 7 — experiment: raise `top_k` to 20, filtered (`top_k=20`, `threshold=0.2`, filtered)
+
+Same 16-question subset and translation tables as Run 4–6.
+
+**What changed and why:** Run 6's per-question detail showed 3 of the 12
+included answerable questions — q01, q06, q08 — retrieved exactly 15,
+`top_k=15`'s cap, while each had more correct patients in its
+ground-truth set than that (actual 20, 17, 18 respectively). That's not
+one edge case; it's 3 of 12 questions hitting the ceiling, a real sign
+`top_k=15` was capping recall again even at the lower threshold. `top_k`
+raised to 20 — just above q01's actual answer-set size (20), the largest
+among the included questions — threshold held at Run 6's 0.2 so `top_k`
+is the only variable changed.
+
+| Metric | Filtered, `top_k=20`/`threshold=0.2` | Unfiltered, same 16 Qs, same settings | Run 6 (filtered, `top_k=15`/`threshold=0.2`) |
+|---|---|---|---|
+| Precision | 1.000 (126/126) | 0.138 (33/240) | 1.000 (114/114) |
+| Recall | 0.977 (126/129) | 0.256 (33/129) | 0.884 (114/129) |
+| Fallback accuracy | 1.000 (4/4) | 0.000 (0/4) | 1.000 (4/4) |
+
+**Result — were q01/q06/q08 actually uncapped?** Yes, all three, cleanly:
+
+- **q01: retrieved=20, actual=20** — no longer truncated, but it does
+  consume the entire `top_k=20` budget. Since its answer set is exactly
+  20, this run happens to capture all of it with zero slack; a
+  hypothetical 21st correct patient would still be cut off. q01 is fully
+  captured here, not "still constrained" in the sense of missing anyone,
+  but it's the one question with no headroom left at `top_k=20`.
+- **q06: retrieved=17, actual=17** and **q08: retrieved=18, actual=18** —
+  both now fully uncapped with room to spare (3 and 2 slots unused,
+  respectively).
+
+Recall climbed from 0.884 to 0.977 (+0.093) — nearly all of the remaining
+gap from Run 6 closed. The 3 missing patients (129 − 126) are entirely
+q14 (`retrieved=14`, `actual=17` — see per-question detail): q14 was
+never `top_k`-capped at 15 either (12 retrieved then, well under 15), so
+its shortfall is the 0.2 score threshold, not `top_k` — the same 3
+patients would need a threshold below 0.2 to be captured, not a higher
+`top_k`.
+
+Precision held at exactly 1.000 (126/126) and fallback accuracy held at
+1.000 (4/4), consistent with every filtered run so far — both properties
+that come from the metadata filter itself, not from `top_k` or
+`threshold`, so neither was expected to move here. The same-subset
+unfiltered control at these settings again confirms the filtered/
+unfiltered gap: fallback accuracy 0.000 unfiltered vs. 1.000 filtered,
+the same structural result as Run 6.
+
+**Caveat:** same 16-question-subset caveat as Run 4–6. `top_k=20` is
+sized to this eval set's specific answer-set sizes (max 20, for q01) —
+not a general guarantee that 20 is enough for an arbitrary live question,
+the same caveat Run 3 raised for the unfiltered case.
+
+## Run 8 — demographic-only questions + `select_threshold()` wired into the eval harness (`top_k=15`, `--filtered --conditional-threshold`)
+
+**New questions, ground truth verified — and corrected.** Two new
+answerable, demographic-only questions were added to
+`data/eval/questions.json` (no `condition`/`drug`/`lab` — just `gender`
+and `birth_decade`, so they exercise the one filter combination
+`select_threshold()` deliberately does *not* treat as permissive):
+
+- **q21**: `{"gender": "M", "birth_decade": 1930}` — "Which male patients
+  were born in the 1930s?"
+- **q22**: `{"gender": "F", "birth_decade": 1990}` — "Which female
+  patients were born in the 1990s?"
+
+The counts these were planned around (129 and 691, from a raw row count
+against `person.csv`) turned out to be wrong — `python
+scripts/build_eval_answer_key.py` reported **128** and **680**. Root
+cause, confirmed by investigation: `person.csv` has duplicate rows per
+`person_id` (1 duplicate in the male-1930s bucket, 11 in the
+female-1990s bucket) — the same dirty-data pattern already documented
+elsewhere in this file for `visit_occurrence.csv`.
+`patients_matching_demographic()` correctly `set()`-dedupes to unique
+patients, which is the honest ground truth; the raw row count wasn't.
+**128 and 680 are the verified numbers used throughout this section.**
+`build_eval_answer_key.py`'s assertion check passes for the full
+22-question set (all labels honest).
+
+**`run_eval.py --conditional-threshold` (new):** rather than one flat
+`--threshold` for the whole run, each question now gets its own
+threshold via `select_threshold()`, computed from that question's own
+translated `condition`/`drug` filters — matching `scripts/api.py`'s
+actual live per-request behavior instead of a single fixed value. Only
+valid together with `--filtered`.
+
+### Aggregate results, all 18 included questions (`top_k=15`, `--filtered --conditional-threshold`)
+
+| Metric | Value |
+|---|---|
+| Precision | 1.000 (133/133) |
+| Recall | 0.142 (133/937) |
+| Fallback accuracy | 1.000 (4/4) |
+
+**The original 16 questions' contribution is byte-identical to Run 6** —
+every one of q01–q09/q13–q15 already carries a `condition` or `drug`
+filter, so `select_threshold()` computes 0.2 for all of them, the same
+value Run 6's flat `--threshold 0.2` used. Confirmed by comparing
+per-question output directly: q01 15/15/20, q02 12/12/12, q03 8/8/8, q04
+4/4/4, q05 10/10/10, q06 15/15/17, q07 5/5/5, q08 15/15/18, q09 4/4/4,
+q13 9/9/9, q14 12/12/17, q15 5/5/5, q16/q17/q19/q20 all fell back —
+identical to Run 6's own per-question output, entry for entry. Subtotal:
+114/114 correct/retrieved, 129 actual (precision 1.000, recall 0.884,
+fallback 1.000/4) — Run 6's exact numbers. **All of the difference
+between this run's aggregate and Run 6's comes from q21/q22**: 133 − 114
+= 19 additional correct/retrieved, 937 − 129 = 808 additional actual
+(128 + 680).
+
+### q21/q22 per-question detail (conditional threshold — both get `DEFAULT_THRESHOLD`, 0.4, since neither has a condition/drug filter)
+
+| Question | Retrieved | Correct | Actual | Recall | Bottleneck |
+|---|---|---|---|---|---|
+| q21 | 4 | 4 | 128 | 0.031 | Score threshold (0.4) — only 4 chunks cleared it, `top_k=15` never became binding |
+| q22 | 15 | 15 | 680 | 0.022 | `top_k=15` — every one of the 15 slots is a correct patient (precision still 1.000), but the ground-truth set (680) is so large that `top_k` caps recall long before threshold matters |
+
+Both stay at perfect precision (4/4, 15/15) — a gender/birth_decade
+filter guarantees any retrieved chunk matches that demographic, the same
+structural protection condition/drug filters have. Recall is low for
+both, but for different reasons: q21's ceiling is the 0.4 threshold
+(few chunks score that high against a generic demographic-only
+question), q22's ceiling is `top_k` (680 is such a large bucket that
+`top_k=15` caps it regardless of threshold) — the same "which limiter is
+binding" story Run 2/3 already told for unfiltered queries, now shown
+again for demographic-only filtered ones.
+
+### What 0.2 vs. 0.4 actually does for q21/q22 (`--filtered --threshold 0.2` vs. `--filtered --threshold 0.4`, flat, not conditional)
+
+| Question | `threshold=0.2` | `threshold=0.4` |
+|---|---|---|
+| q21 | retrieved=15, correct=15 (now `top_k`-capped) | retrieved=4, correct=4 (threshold-capped) |
+| q22 | retrieved=15, correct=15 | retrieved=15, correct=15 (unchanged) |
+
+Exactly as the aggregate numbers implied: q21's recall really does
+improve at the lower threshold (4 → 15, all still correct) — the
+threshold, not `top_k`, was its binding constraint at 0.4, and lowering
+it just shifts the constraint over to `top_k` instead. q22 is completely
+unaffected by the threshold change (15 either way) because `top_k=15`
+was already the binding constraint at 0.4; a 680-patient bucket has far
+more chunks clearing 0.4 than 15 already.
+
+### This does not mean the gender/birth_decade exclusion from `select_threshold()` was unnecessary
+
+The pattern above — precision holding at 1.000, recall improving, no
+apparent cost — looks identical to the condition/drug case Run 6
+documented. **That similarity is real but doesn't prove the fix in
+`d6b54fa` was excessive.** `select_threshold()` withholds
+`PERMISSIVE_THRESHOLD` from gender/birth_decade specifically because of
+a risk this eval harness structurally cannot represent: an off-topic
+*free-text question* paired with only a demographic filter. Ground truth
+here is computed entirely from `filters` via `compute_answer_set()` —
+`build_eval_answer_key.py` never reads the question text — so a question
+like "Which female patients have a fake, untracked condition?" with
+`filters={"gender": "F"}` would still get "all female patients" as its
+correct answer, a large non-empty set, not the empty unanswerable set
+the real risk scenario needs. `build_answer_key()`'s own honesty
+assertion (`answerable` questions must have non-empty ground truth) would
+reject a demographic-only question deliberately mislabeled `answerable:
+false` for this reason — that combination is unrepresentable in this
+ground-truth model without a much bigger redesign, out of scope here.
+
+The actual risk — a gender-only-filtered off-topic question returning a
+pile of unrelated patients instead of falling back — remains covered
+only by `tests/test_api.py`'s
+`test_gender_only_filter_does_not_trigger_permissive_threshold`, which
+constructs that exact scenario directly (a fixed low-but-nonzero-scoring
+chunk, a gender-only filter, asserted to fall back) rather than relying
+on `questions.json`'s filter-derived ground truth. **Q21/q22's clean
+precision numbers should not be read as "0.2 would have been fine for
+gender/birth_decade filters too" — they can't test the thing that matters
+here at all.**
+
+## Run 9 — raise `DEFAULT_TOP_K` to 20 (`top_k=20`, `--filtered --conditional-threshold`)
+
+**What changed vs. Run 8:** only `top_k`, 15 → 20 — same
+`--conditional-threshold` mode, same 22-question set (18 included: q10,
+q11, q12, q18 still excluded, unrepresentable). This is also
+`scripts/retrieve.py`'s new shipped `DEFAULT_TOP_K` and `scripts/api.py`'s
+new `QueryRequest.top_k` default, not just an experimental value — see
+the `DEFAULT_TOP_K` comment for the full revision history (5 → 15 → 20).
+
+```
+python scripts/run_eval.py --filtered --conditional-threshold --top-k 20
+```
+
+| Metric | Value |
+|---|---|
+| Precision | 1.000 (150/150) |
+| Recall | 0.160 (150/937) |
+| Fallback accuracy | 1.000 (4/4) |
+
+**Original 16 questions now match Run 7's per-question output exactly**
+(not Run 6/8's) — confirmed entry-by-entry: q01 20/20/20, q02 12/12/12,
+q03 8/8/8, q04 4/4/4, q05 10/10/10, q06 17/17/17, q07 5/5/5, q08
+18/18/18, q09 4/4/4, q13 9/9/9, q14 14/14/17, q15 5/5/5 — identical to
+Run 7's own numbers. Makes sense: raising `top_k` to 20 uncaps exactly
+the same questions Run 7 identified (q01, q06, q08 were the ones pinned
+at the old `top_k=15` ceiling), and `--conditional-threshold` computes
+0.2 for all 16 of them since each already carries a `condition`/`drug`
+filter — the same threshold Run 7 used flatly. Subtotal: 126/126 correct/
+retrieved, 129 actual (precision 1.000, recall 0.977) — Run 7's exact
+numbers.
+
+**q21: unchanged from Run 8 — retrieved=4, correct=4, actual=128.**
+This is expected, not a surprise requiring investigation: q21 has no
+condition/drug filter, so `select_threshold()` still gives it
+`DEFAULT_THRESHOLD` (0.4) regardless of `top_k`, and Run 8 already
+established q21's binding constraint at 0.4 is the *threshold*, not
+`top_k` (only 4 chunks clear 0.4 at all, well under either `top_k=15` or
+`top_k=20`). Raising `top_k` had nothing to uncap here — confirms, rather
+than contradicts, Run 8's explanation.
+
+**q22: retrieved=20, correct=20, actual=680** — moved from Run 8's 15 by
+exactly the `top_k` increase (15 → 20), still a tiny fraction of 680 and
+still `top_k`-capped (precision holds at 20/20). This is a structural
+limit of demographic-only filters against a large candidate pool, not
+something `top_k=20` — or any `top_k` in the 1–20 validated range — was
+ever going to fully solve; closing q22's recall gap would need a
+`top_k` in the hundreds, far past what a single `/query` response should
+reasonably return.
+
+**This is the new shipped default.** `top_k=20` with `select_threshold()`
+live in `scripts/api.py` is what a real caller (Block 5) can now expect
+from a condition/drug-filtered query: the permissive 0.2 threshold and a
+`top_k` sized to Run 7's measured ceiling under that threshold, not
+Run 5's older, stricter-threshold measurement.
+
+## Run 10 — exploratory: is `PERMISSIVE_THRESHOLD` (0.2) actually the safe floor? (`top_k=20`, `--filtered --conditional-threshold`, `--permissive-threshold` swept)
+
+**This is an exploratory experiment, not a proposal to ship a new
+default.** `scripts/retrieve.py`'s `PERMISSIVE_THRESHOLD` (0.2) was
+chosen in Run 6 because it was the *lowest score observed* among
+correct-but-excluded patients in that diagnostic — not because anything
+proved 0.2 is the true safe floor. Run 6's diagnostic checked every
+condition/drug-filtered chunk against ground truth at every score, down
+to slightly negative values (-0.0045), and found **zero false
+positives** — every chunk that passed a condition/drug filter was
+genuinely correct regardless of score. Run 7 showed q14 still misses 3
+correct patients at `threshold=0.2` in a way that looked
+threshold-bound, not `top_k`-bound (`retrieved=14 < top_k=20`) —
+suggesting a lower floor might recover them. This run tests that
+directly, via a new `run_eval.py --permissive-threshold` override that
+substitutes a candidate value for `PERMISSIVE_THRESHOLD` on
+condition/drug-filtered questions only, without touching
+`scripts/retrieve.py`'s actual constant or `select_threshold()`.
+Demographic-only questions (q21/q22) are unaffected by the override —
+they always get `DEFAULT_THRESHOLD` regardless.
+
+**Sanity check first:** the unset-override run reproduced Run 9's
+numbers exactly (150/150 correct/retrieved, 937 actual, every
+per-question value identical) before any of the candidate floors were
+trusted.
+
+### Original 16 condition/drug-filtered questions only (q21/q22 excluded — see below)
+
+| `--permissive-threshold` | Precision | Recall | Fallback accuracy |
+|---|---|---|---|
+| 0.2 (unset — shipped default) | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+| 0.1 | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+| 0.0 | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+| -0.01 | 1.000 (126/126) | 0.977 (126/129) | 1.000 (4/4) |
+
+**The honest headline: all four rows are identical.** Not "precision
+held, recall improved slightly" — every single per-question
+retrieved/correct value was byte-for-byte the same at 0.2, 0.1, 0.0, and
+-0.01. This directly contradicts the hypothesis that q14's gap (and any
+other slack) was threshold-bound and would close as the floor dropped.
+
+### q14, investigated with Run 6's rigor — why nothing moved
+
+q14 stayed at **retrieved=14, correct=14, actual=17 at every tested
+value**, no exceptions. Investigated directly rather than just reporting
+the null result:
+
+- At `top_k=20`, `retrieve()`'s Pinecone fetch is truncated **by score
+  rank before any threshold filtering happens.** For q14's filtered
+  candidate pool (28 chunks total, confirmed via an unbounded
+  `top_k=100` fetch — the same pool size Run 6's original diagnostic
+  saw), the 20th-best chunk already scores **0.2348** — above every
+  value tested (0.2, 0.1, 0.0, -0.01). The lower-scoring chunks that
+  Run 6's diagnostic found simply never reach `run_eval.py`'s threshold
+  check at all at this `top_k` — there's nothing for a lower threshold
+  to include.
+- The 3 missing patients, identified directly: **person 3024 (best
+  score 0.2338), person 5127 (0.2334), person 8777 (0.2078).** Two of
+  the three (3024, 5127) score *above* even the shipped 0.2 threshold —
+  they would already count as matches if only they were fetched. All
+  three are excluded purely because 20 other chunks in the pool
+  outscore them, not because their own score falls below whatever
+  threshold was tested.
+- Part of why the pool fills up before reaching them: 7 of the 20
+  chunks actually returned are second chunks (`_chunk1`) of a patient
+  whose first chunk (`_chunk0`) is already in the same top-20 list —
+  `retrieved_ids` dedupes these to the same person, so real `top_k`
+  headroom for *new* patients is smaller than 20 suggests.
+- **Conclusion: q14's remaining gap is capped by `top_k=20`, not by
+  `PERMISSIVE_THRESHOLD`.** Run 7's framing ("not top_k-capped" because
+  `retrieved(14) < top_k(20)`) was incomplete — that comparison is at
+  the deduped-person level, but the underlying chunk fetch is still
+  `top_k`-limited before dedup, and that's what's actually blocking
+  these 3 patients.
+
+### Precision — held at 1.000, but for a different reason than expected
+
+Precision didn't hold at 1.000 across four independently-tested
+threshold values proving no false positives creep in as the floor drops.
+It held because **the retrieved chunk sets were completely identical at
+every tested value** — the experiment, as run at `top_k=20`, never
+actually exercised a lower threshold's filtering behavior for any of
+the 12 included questions. Run 6's original zero-false-positive finding
+(checked against a much larger, unbounded candidate pool) is still the
+real evidence that a lower floor wouldn't introduce false positives —
+this run doesn't add new evidence on that question, because nothing
+below the `top_k=20` cutoff score was ever evaluated against any
+threshold here.
+
+### q21/q22 — confirmed unaffected at every value
+
+Identical to Run 9 across all four override values, exactly as
+expected (`--permissive-threshold` only touches condition/drug-filtered
+questions): q21 `retrieved=4, correct=4, actual=128`; q22
+`retrieved=20, correct=20, actual=680`.
+
+### Verdict
+
+**This experiment could not test what it set out to test, at
+`top_k=20`.** Every candidate floor from 0.2 down to -0.01 produced
+byte-identical retrieval results, because `top_k=20` — not
+`PERMISSIVE_THRESHOLD` — is the actual binding constraint on the one
+question (q14) with any remaining gap in this question set. Lowering
+`PERMISSIVE_THRESHOLD` below 0.2 would have **zero measurable effect in
+the current production configuration** — not because 0.2 is already the
+optimal floor, but because the candidate pool never gets deep enough
+for a lower floor to matter until `top_k` is also raised. Genuinely
+testing whether a lower floor helps would need a much larger `top_k`
+(e.g. matching Run 6's original `top_k=100` diagnostic setup) — a
+different experiment than the one requested here.
+
+**`scripts/retrieve.py`'s `PERMISSIVE_THRESHOLD` constant was left
+unchanged (0.2)**, as instructed — this task documents the experiment,
+including its most important finding (that it couldn't test the thing
+it was designed to test at the shipped `top_k`), not a recommendation.
+Whether to adopt a new `PERMISSIVE_THRESHOLD`, and whether that decision
+should also revisit `top_k`, is a separate decision left to the user.
+
+## Run 11 — `FILTERED_TOP_K_CEILING` (25), filtered `top_k` raised past the shipped default (`top_k=25`, `--filtered --conditional-threshold`)
+
+**What changed and why:** `scripts/retrieve.py` gained
+`FILTERED_TOP_K_CEILING = 25` — a `top_k` ceiling condition/drug-filtered
+requests may use, mirroring how `select_threshold()` already gates
+`PERMISSIVE_THRESHOLD` on the same condition/drug check. Unfiltered
+requests still cap at `DEFAULT_TOP_K` (20), unchanged. This run measures
+the real effect of using the new headroom — `top_k` raised from Run 9's
+shipped 20 to the new ceiling of 25, `--conditional-threshold` held the
+same, same 22-question set (18 included).
+
+```
+python scripts/run_eval.py --filtered --conditional-threshold --top-k 25
+```
+
+| Metric | Value |
+|---|---|
+| Precision | 1.000 (157/157) |
+| Recall | 0.168 (157/937) |
+| Fallback accuracy | 1.000 (4/4) |
+
+**Compared to Run 9 (`top_k=20`):** precision and fallback accuracy are
+unchanged (both properties of the metadata filter itself, not `top_k` —
+consistent with every prior `top_k` experiment). Recall moves from 0.160
+(150/937) to 0.168 (157/937), a gain of 7 correct patients — small in
+absolute terms, entirely accounted for by two questions:
+
+- **q14: 14/17 → 16/17** (+2). Run 10 traced q14's Run-9 shortfall to 3
+  specific patients excluded by rank, not score — person 3024 (best score
+  0.2338) and person 5127 (0.2334) both already clear `PERMISSIVE_THRESHOLD`
+  (0.2) but were pushed out of the top 20 by rank. The 5 extra `top_k`
+  slots here recover exactly those two. Person 8777 (0.2078) is still
+  missing — still outranked even at `top_k=25`, so q14 remains 1 patient
+  short (16/17, not 17/17).
+- **q22: 20/680 → 25/680** (+5). q22's ceiling was already established
+  (Run 8/9) as `top_k` itself, not the threshold — a 680-patient
+  demographic-only bucket has far more chunks clearing `DEFAULT_THRESHOLD`
+  than any tested `top_k`. Raising `top_k` by 5 simply returns exactly 5
+  more correct patients (precision holds at 25/25); the remaining gap to
+  680 is structural, not something any `top_k` in the validated range was
+  ever going to close (same conclusion Run 9 already reached for q22 at
+  `top_k=20`).
+
+All 10 other included questions (q01–q09, q13, q15, q16/q17/q19/q20's
+fallbacks, q21) are byte-identical to Run 9 — each already retrieved its
+full answer set at `top_k=20` (or, for q21, was already threshold-capped,
+not `top_k`-capped), so the extra headroom had nothing left to uncap for
+them.
+
+**Result: raising the filtered ceiling to 25 is a real but modest recall
+win (+0.008 absolute, +4.7% relative to Run 9), not a case for changing
+the shipped default.** `DEFAULT_TOP_K` stays 20 — the two questions that
+moved (q14, q22) needed the extra headroom for different, narrow reasons
+(one rank-boundary patient, one large demographic bucket), not a general
+across-the-board undercount. `FILTERED_TOP_K_CEILING` exists so a caller
+who explicitly wants deeper recall on a filtered query *can* ask for it up
+to 25, without opening that same headroom to unfiltered queries, where a
+larger `top_k` would cost precision instead (see `scripts/retrieve.py`'s
+`FILTERED_TOP_K_CEILING` comment on why it isn't set higher than 25).
+
+**Caveat:** same 16/18-question-subset caveat as Run 4–10.
+
 ## Spot-check: computed answer keys verified by hand
 
 Per `docs/tasks.md`'s Phase 5 checklist, 3 questions were checked against
@@ -130,7 +753,7 @@ the raw CSVs independently of `build_eval_answer_key.py`'s own code path:
   2025-11-19. Correct.
 
 All 3 matched their filters exactly. Combined with
-`build_eval_answer_key.py`'s own assertion check (all 20 questions labeled
+`build_eval_answer_key.py`'s own assertion check (all 22 questions labeled
 honestly — no answerable question computed an empty set, no unanswerable
 question computed a non-empty one), this gives reasonable confidence the
 ground truth is trustworthy.
