@@ -22,91 +22,93 @@ still unmerged (stacked PR), or `main` if it already merged.
 
 ## Phase 1 — Spec (`phase-1-spec`, base: `main`)
 
-- [ ] `git checkout main && git checkout -b phase-1-spec`
-- [ ] Write `docs/spec.md`
-- [ ] Write `docs/plan.md`
-- [ ] Write `docs/tasks.md`
-- [ ] Commit `docs/spec.md`, `docs/plan.md`, `docs/tasks.md`
-- [ ] `git push -u origin phase-1-spec`
-- [ ] Open PR1: base `main` (spec review)
+- [x] `git checkout main && git checkout -b phase-1-spec`
+- [x] Write `docs/spec.md`
+- [x] Write `docs/plan.md`
+- [x] Write `docs/tasks.md`
+- [x] Commit `docs/spec.md`, `docs/plan.md`, `docs/tasks.md`
+- [x] `git push -u origin phase-1-spec`
+- [x] Open PR1: base `main` (spec review)
 
 ## Phase 2 — Setup (`phase-2-setup`, base: `phase-1-spec`)
 
-- [ ] `git checkout phase-1-spec && git checkout -b phase-2-setup`
-- [ ] Create `requirements.txt`, `.env.example`
-- [ ] Confirm `.gitignore` covers `.env`
-- [ ] `pip install -r requirements.txt`, then pin exact versions
-- [ ] Create `scripts/check_connection.py`
-- [ ] Run connection smoke test — confirm both Pinecone and Claude keys OK
-- [ ] Create `scripts/create_index.py`
-- [ ] Run — confirm index created, note the printed scoring metric
-- [ ] Re-run — confirm no error, no duplicate index
-- [ ] Commit Phase 2 files
-- [ ] `git push -u origin phase-2-setup`
-- [ ] Open PR2: base `phase-1-spec` (or `main` if PR1 already merged)
+- [x] `git checkout phase-1-spec && git checkout -b phase-2-setup`
+- [x] Create `requirements.txt`, `.env.example`
+- [x] Confirm `.gitignore` covers `.env`
+- [x] `pip install -r requirements.txt`, then pin exact versions
+- [x] Create `scripts/check_connection.py`
+- [x] Run connection smoke test — confirm both Pinecone and Claude keys OK
+- [x] Create `scripts/create_index.py`
+- [x] Run — confirm index created, note the printed scoring metric (cosine — higher is more relevant)
+- [x] Re-run — confirm no error, no duplicate index
+- [x] Commit Phase 2 files
+- [x] `git push -u origin phase-2-setup`
+- [x] Open PR2: base `phase-1-spec` (or `main` if PR1 already merged)
 
 ## Phase 3 — Ingest (`phase-3-ingest`, base: `phase-2-setup`)
 
-- [ ] `git checkout phase-2-setup && git checkout -b phase-3-ingest`
-- [ ] Copy `graph_export.jsonl` from Block 3's `data/export/` into `data/raw/`
-- [ ] Compute `text` length distribution against the real file; confirm the
+- [x] `git checkout phase-2-setup && git checkout -b phase-3-ingest`
+- [x] Copy `graph_export.jsonl` from Block 3's `data/export/` into `data/raw/`
+- [x] Compute `text` length distribution against the real file; confirm the
       200-char threshold still fits (see spec's Chunking design)
-- [ ] Create `scripts/chunk_records.py`
-- [ ] Create `tests/test_chunking.py` — cover short text, a split case, the
+- [x] Create `tests/test_chunking.py` — cover short text, a split case, the
       oversized-sentence fallback, and empty text
-- [ ] `pytest tests/test_chunking.py` — all pass
-- [ ] Create `scripts/ingest.py`
-- [ ] Run — confirm vector count roughly matches patient count
-- [ ] Re-run — confirm identical count (idempotency, verified not assumed)
-- [ ] Run one self-match query — confirm a chunk's own text returns itself
+- [x] Create `scripts/chunk_records.py`
+- [x] `pytest tests/test_chunking.py` — all pass
+- [x] Create `scripts/ingest.py`
+- [x] Run — confirm vector count roughly matches patient count
+- [x] Re-run — confirm identical count (idempotency, verified not assumed)
+- [x] Run one self-match query — confirm a chunk's own text returns itself
       as top match (confirms score direction empirically)
-- [ ] Test the empty-text chunk path against real Pinecone — confirm
+- [x] Test the empty-text chunk path against real Pinecone — confirm
       accept/reject behavior for an empty `chunk_text` string; if rejected,
       adjust `chunk_records.py`'s fallback (see spec's Chunking design)
-- [ ] Commit `scripts/chunk_records.py`, `scripts/ingest.py`,
+- [x] Commit `scripts/chunk_records.py`, `scripts/ingest.py`,
       `tests/test_chunking.py`, `data/raw/graph_export.jsonl`
-- [ ] `git push -u origin phase-3-ingest`
-- [ ] Open PR3: base `phase-2-setup` (or `main` if PR2 already merged)
+- [x] `git push -u origin phase-3-ingest`
+- [x] Open PR3: base `phase-2-setup` (or `main` if PR2 already merged)
 
 ## Phase 4 — Retrieve + Generate (`phase-4-retrieve-generate`, base: `phase-3-ingest`)
 
-- [ ] `git checkout phase-3-ingest && git checkout -b phase-4-retrieve-generate`
-- [ ] Create `scripts/retrieve.py`
-- [ ] Create `tests/test_retrieve.py` — cover above/below/exactly-at threshold
-- [ ] `pytest tests/test_retrieve.py` — all pass
-- [ ] Run a real query by hand — confirm results look sensible
-- [ ] Create `scripts/generate.py`
-- [ ] Create `scripts/api.py`
-- [ ] Test all 3 response shapes by hand: a real match, no match, a
+- [x] `git checkout phase-3-ingest && git checkout -b phase-4-retrieve-generate`
+- [x] Create `tests/test_retrieve.py` — cover above/below/exactly-at threshold
+- [x] Create `scripts/retrieve.py`
+- [x] `pytest tests/test_retrieve.py` — all pass
+- [x] Run a real query by hand — confirm results look sensible
+- [x] Create `scripts/generate.py`
+- [x] Create `scripts/api.py`
+- [x] Test all 3 response shapes by hand: a real match, no match, a
       simulated upstream failure (temporarily invalid API key)
-- [ ] Test 422 validation by hand: an empty/whitespace-only `question`,
+- [x] Test 422 validation by hand: an empty/whitespace-only `question`,
       and an out-of-range `top_k` (e.g. 0 or 21)
-- [ ] Commit `scripts/retrieve.py`, `scripts/generate.py`, `scripts/api.py`,
+- [x] Commit `scripts/retrieve.py`, `scripts/generate.py`, `scripts/api.py`,
       `tests/test_retrieve.py`
-- [ ] `git push -u origin phase-4-retrieve-generate`
-- [ ] Open PR4: base `phase-3-ingest` (or `main` if PR3 already merged)
+- [x] `git push -u origin phase-4-retrieve-generate`
+- [x] Open PR4: base `phase-3-ingest` (or `main` if PR3 already merged)
 
 ## Phase 5 — Eval (`phase-5-eval`, base: `phase-4-retrieve-generate`)
 
-- [ ] `git checkout phase-4-retrieve-generate && git checkout -b phase-5-eval`
-- [ ] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
-      `measurement.csv` from Block 1 into `data/raw/`
-- [ ] Create `scripts/build_eval_answer_key.py`
-- [ ] Write `data/eval/questions.json` (≥20 questions — co-occurrence,
+- [x] `git checkout phase-4-retrieve-generate && git checkout -b phase-5-eval`
+- [x] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
+      `measurement.csv`, `visit_occurrence.csv` from Block 1 into `data/raw/`
+- [x] Copy `scripts/concepts.py` from Block 1
+- [x] Create `scripts/build_eval_answer_key.py`
+- [x] Write `data/eval/questions.json` (≥20 questions — co-occurrence,
       demographic, high-burden/visit, lab-threshold, and ≥5 deliberately
       unanswerable)
-- [ ] Run the answer-key builder's assertion check — confirm no question
+- [x] Run the answer-key builder's assertion check — confirm no question
       is mislabeled (answerable has matches, unanswerable has none)
-- [ ] Spot-check a few computed answer keys by hand against the CSVs
-- [ ] Create `scripts/run_eval.py` (calls `retrieve.py` only, never Claude)
-- [ ] Run once at default settings — record precision/recall/fallback accuracy
-- [ ] Change one setting (`top_k` or the threshold), run again
-- [ ] Write `docs/eval_results.md` — both runs, both metrics, a short note
+- [x] Spot-check a few computed answer keys by hand against the CSVs
+- [x] Create `scripts/run_eval.py` (calls `retrieve.py` only, never Claude)
+- [x] Run once at default settings — record precision/recall/fallback accuracy
+- [x] Change one setting (`top_k` or the threshold), run again
+- [x] Write `docs/eval_results.md` — both runs, both metrics, a short note
       on what changed and why
-- [ ] Commit `data/raw/*.csv`, `scripts/build_eval_answer_key.py`,
-      `data/eval/questions.json`, `scripts/run_eval.py`, `docs/eval_results.md`
-- [ ] `git push -u origin phase-5-eval`
-- [ ] Open PR5: base `phase-4-retrieve-generate` (or `main` if PR4 already merged)
+- [x] Commit `data/raw/*.csv`, `scripts/concepts.py`,
+      `scripts/build_eval_answer_key.py`, `data/eval/questions.json`,
+      `scripts/run_eval.py`, `docs/eval_results.md`
+- [x] `git push -u origin phase-5-eval`
+- [x] Open PR5: base `phase-4-retrieve-generate` (or `main` if PR4 already merged)
 
 ## Phase 6 — Verify + Docs (`phase-6-verify-docs`, base: `phase-5-eval`)
 

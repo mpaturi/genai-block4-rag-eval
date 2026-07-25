@@ -27,6 +27,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   never assumes partial state
 - `run_eval.py` calls `retrieve.py` directly — it never calls `generate.py`
   or Claude
+- Any file with a corresponding test file is built test-first: the test
+  file is written before the implementation exists, so it starts failing,
+  then the implementation is written against it until it passes
 
 ## File map
 
@@ -59,11 +62,11 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - `.gitignore` (Python template + `.env`) already exists from repo creation
   — just confirm `.env` is actually covered
 
-- [ ] Create `requirements.txt`, `.env.example`
-- [ ] `cp .env.example .env` and fill in real keys once you have them
-- [ ] `pip install -r requirements.txt`, then freeze exact versions back
+- [x] Create `requirements.txt`, `.env.example`
+- [x] `cp .env.example .env` and fill in real keys once you have them
+- [x] `pip install -r requirements.txt`, then freeze exact versions back
       into `requirements.txt`
-- [ ] Commit: `feat(setup): add Python deps and env template`
+- [x] Commit: `feat(setup): add Python deps and env template`
 
 ---
 
@@ -82,9 +85,9 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Catches auth errors separately from network/timeout errors for a useful
   message
 
-- [ ] Create `scripts/check_connection.py`
-- [ ] Run — confirm both keys report OK
-- [ ] Commit: `feat(setup): add Pinecone and Claude connection smoke test`
+- [x] Create `scripts/check_connection.py`
+- [x] Run — confirm both keys report OK
+- [x] Commit: `feat(setup): add Pinecone and Claude connection smoke test`
 
 ---
 
@@ -105,10 +108,10 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   runs in Phase 2. The empirical self-match check (Task 5) confirms the
   direction for real once chunks exist
 
-- [ ] Create `scripts/create_index.py`
-- [ ] Run — confirm index created, note the printed scoring metric
-- [ ] Re-run — confirm it does not error or create a duplicate index
-- [ ] Commit: `feat(setup): add idempotent Pinecone index creation`
+- [x] Create `scripts/create_index.py`
+- [x] Run — confirm index created, note the printed scoring metric (cosine — higher is more relevant)
+- [x] Re-run — confirm it does not error or create a duplicate index
+- [x] Commit: `feat(setup): add idempotent Pinecone index creation`
 
 ---
 
@@ -130,19 +133,19 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - `tests/test_chunking.py` covers: short text (1 chunk), text needing a
   split (2+ chunks), the oversized-sentence fallback, and empty text
 
-- [ ] Copy `graph_export.jsonl` from `genai-block3-graph-kb/data/export/`
+- [x] Copy `graph_export.jsonl` from `genai-block3-graph-kb/data/export/`
       into `data/raw/`
-- [ ] Compute the `text` field's character-length distribution against the
+- [x] Compute the `text` field's character-length distribution against the
       copied file; confirm 200 chars still gives "most patients single-
       chunk, high-burden patients split" (see spec's Chunking design)
-- [ ] Create `scripts/chunk_records.py`
-- [ ] Create `tests/test_chunking.py`
-- [ ] `pytest tests/test_chunking.py` — all pass
-- [ ] During Phase 3 ingestion, test the empty-text chunk path against real
+- [x] Create `tests/test_chunking.py`
+- [x] Create `scripts/chunk_records.py`
+- [x] `pytest tests/test_chunking.py` — all pass
+- [x] During Phase 3 ingestion, test the empty-text chunk path against real
       Pinecone — confirm whether integrated inference accepts an empty
       `chunk_text` string; if rejected, adjust `chunk_records.py` to
       substitute a minimal placeholder instead (see spec's Chunking design)
-- [ ] Commit: `feat(ingest): add chunking logic and unit tests`
+- [x] Commit: `feat(ingest): add chunking logic and unit tests`
 
 ---
 
@@ -168,14 +171,14 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Allows a brief wait after upserting before treating a count check as
   final (Pinecone writes are not instantly queryable)
 
-- [ ] Create `scripts/ingest.py`
-- [ ] Run — confirm all batches upload and vector count roughly matches
+- [x] Create `scripts/ingest.py`
+- [x] Run — confirm all batches upload and vector count roughly matches
       patient count
-- [ ] Re-run — confirm the count is identical (idempotency, not assumed)
-- [ ] Run one self-match query (search using a known chunk's own text,
+- [x] Re-run — confirm the count is identical (idempotency, not assumed)
+- [x] Run one self-match query (search using a known chunk's own text,
       confirm it returns itself as top match) — confirms score direction
       empirically, per spec's Retrieval design
-- [ ] Commit: `feat(ingest): add idempotent ingestion into Pinecone`
+- [x] Commit: `feat(ingest): add idempotent ingestion into Pinecone`
 
 ---
 
@@ -194,11 +197,11 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - The threshold comparison is pure logic, unit-tested with fake scores —
   no live Pinecone call needed for that part
 
-- [ ] Create `scripts/retrieve.py`
-- [ ] Create `tests/test_retrieve.py`
-- [ ] `pytest tests/test_retrieve.py` — all pass
-- [ ] Run a real query by hand — confirm results look sensible
-- [ ] Commit: `feat(query): add retrieval with score-threshold logic`
+- [x] Create `tests/test_retrieve.py`
+- [x] Create `scripts/retrieve.py`
+- [x] `pytest tests/test_retrieve.py` — all pass
+- [x] Run a real query by hand — confirm results look sensible
+- [x] Commit: `feat(query): add retrieval with score-threshold logic`
 
 ---
 
@@ -223,22 +226,23 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
 - Pinecone/Claude failures caught and returned as one generic 502, never a
   raw stack trace
 
-- [ ] Create `scripts/generate.py`
-- [ ] Create `scripts/api.py`
-- [ ] Run the API locally, test all 3 response shapes by hand (a match, no
+- [x] Create `scripts/generate.py`
+- [x] Create `scripts/api.py`
+- [x] Run the API locally, test all 3 response shapes by hand (a match, no
       match, and a simulated failure — e.g. a temporarily invalid API key)
-- [ ] Commit: `feat(query): add generation and FastAPI endpoint`
+- [x] Commit: `feat(query): add generation and FastAPI endpoint`
 
 ---
 
 ### Task 8: Eval ground truth
 
 **Files:** `data/raw/condition_occurrence.csv`, `drug_exposure.csv`,
-`person.csv`, `measurement.csv`, `scripts/build_eval_answer_key.py`,
+`person.csv`, `measurement.csv`, `visit_occurrence.csv`,
+`scripts/concepts.py`, `scripts/build_eval_answer_key.py`,
 `data/eval/questions.json`
 
 **Interfaces:**
-- Consumes: Block 1's OMOP CSVs
+- Consumes: Block 1's OMOP CSVs, `scripts/concepts.py`'s concept-ID mappings
 - Produces: `data/eval/questions.json` (≥20 questions) with a
   programmatically computed correct-patient-ID set per question
 
@@ -247,6 +251,11 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   demographic/burden questions reuse Block 3's Cypher-query logic;
   lab-threshold questions are computed straight from `measurement.csv`
   (Block 3 never queried labs — see spec's Relationship to Block 3)
+- High-burden/visit-count ground truth is recomputed from
+  `visit_occurrence.csv`, not trusted from `graph_export.jsonl`'s
+  precomputed `visit_count` field — same independence reasoning as
+  `measurement.csv` for lab thresholds (see spec's Relationship to Block 3
+  and Eval harness design)
 - Question mix: co-occurrence, demographic-filtered, high-burden/visit,
   lab-threshold, and deliberately unanswerable questions to test "I don't
   know" (at least 5 of the 20, per spec — fewer would make fallback
@@ -255,13 +264,15 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   questions get a non-empty computed set, unanswerable ones get an empty
   set — fails loudly on a mismatch instead of relying only on spot-checks
 
-- [ ] Copy the 4 OMOP CSVs from Block 1 into `data/raw/`
-- [ ] Create `scripts/build_eval_answer_key.py`
-- [ ] Write `data/eval/questions.json` (≥20 questions)
-- [ ] Run the answer-key builder's assertion check — confirm no question
+- [x] Copy `condition_occurrence.csv`, `drug_exposure.csv`, `person.csv`,
+      `measurement.csv`, `visit_occurrence.csv` from Block 1 into `data/raw/`
+- [x] Copy `scripts/concepts.py` from Block 1
+- [x] Create `scripts/build_eval_answer_key.py`
+- [x] Write `data/eval/questions.json` (≥20 questions)
+- [x] Run the answer-key builder's assertion check — confirm no question
       is mislabeled
-- [ ] Spot-check a few answer keys by hand against the CSVs
-- [ ] Commit: `feat(eval): add eval questions and ground-truth builder`
+- [x] Spot-check a few answer keys by hand against the CSVs
+- [x] Commit: `feat(eval): add eval questions and ground-truth builder`
 
 ---
 
@@ -289,12 +300,12 @@ python-dotenv, orjson, pytest — exact versions pinned once installed
   re-run and Task 6's manual query test already establish this; `verify.py`
   (Task 10) doesn't exist yet at this point and isn't a precondition here
 
-- [ ] Create `scripts/run_eval.py`
-- [ ] Run once at the default settings — record the score
-- [ ] Change one setting (`top_k` or the threshold) and run again
-- [ ] Write `docs/eval_results.md` — both runs, both metrics, a short note
+- [x] Create `scripts/run_eval.py`
+- [x] Run once at the default settings — record the score
+- [x] Change one setting (`top_k` or the threshold) and run again
+- [x] Write `docs/eval_results.md` — both runs, both metrics, a short note
       on what changed and why
-- [ ] Commit: `feat(eval): add eval runner and document parameter experiment`
+- [x] Commit: `feat(eval): add eval runner and document parameter experiment`
 
 ---
 
