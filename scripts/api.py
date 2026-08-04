@@ -17,7 +17,7 @@ from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from scripts.generate import generate_answer
 from scripts.retrieve import (
@@ -38,13 +38,30 @@ FALLBACK_ANSWER = (
 
 
 class QueryRequest(BaseModel):
-    question: str
+    # max_length=500 - this is the field that actually reaches an LLM
+    # prompt (generate_answer(), called unconditionally from /query below),
+    # so it's the one genuinely prompt-injection-relevant field here. 500
+    # is generous for a natural-language clinical question (the real
+    # eval set in data/eval/questions.json tops out at 98 chars) while
+    # still bounding how much attacker-controlled text a single request
+    # can push toward Claude.
+    question: str = Field(max_length=500)
     top_k: int = 20
     # Phase 7 - optional structured metadata filters, all None by default
     # so a request using none of them behaves exactly as before Phase 7.
-    condition: str | None = None
-    drug: str | None = None
-    lab: str | None = None
+    #
+    # condition/drug/lab below are never seen by generate_answer's prompt -
+    # they're only used to build a Pinecone metadata filter
+    # (build_metadata_filter() in retrieve.py) and are validated there
+    # against fixed whitelists before any Pinecone call. The max_length
+    # caps here are not a prompt-injection defense; they just keep
+    # obviously-invalid oversized values from propagating past the API
+    # boundary at all. 100 comfortably covers real values (longest
+    # observed condition/drug name in data/raw/graph_export.jsonl is 25/19
+    # chars); lab's whitelist entries (SBP/BMI/Glucose/HbA1c) top out at 7.
+    condition: str | None = Field(default=None, max_length=100)
+    drug: str | None = Field(default=None, max_length=100)
+    lab: str | None = Field(default=None, max_length=20)
     comparison: Literal["above", "below"] | None = None
     value: float | None = None
     gender: Literal["M", "F"] | None = None

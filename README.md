@@ -15,7 +15,11 @@ Full design reasoning lives in `docs/spec.md`; this file covers setup, architect
    ```
    cp .env.example .env
    ```
-   Required: `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `ANTHROPIC_API_KEY`.
+   Required: `PINECONE_API_KEY` (full access — used by `create_index.py`,
+   `ingest.py`, `verify.py`), `PINECONE_QUERY_API_KEY` (scoped to
+   DataPlaneViewer, query only — used by `retrieve.py`/the live API, so a
+   compromise of the query path can't write or delete index data),
+   `PINECONE_INDEX_NAME`, `ANTHROPIC_API_KEY`.
 4. Run the whole setup-through-verify pipeline with one command:
    ```
    python scripts/run_all.py

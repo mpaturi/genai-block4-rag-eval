@@ -12,6 +12,7 @@ from pinecone import Pinecone
 from pinecone.exceptions import NotFoundException
 
 from chunk_records import chunk_all_records
+from sanitize import sanitize_chunk
 
 load_dotenv()
 
@@ -73,6 +74,7 @@ def main() -> int:
 
     chunks = chunk_all_records(RECORDS_PATH)
     chunks = [strip_null_fields(chunk) for chunk in chunks]
+    chunks = [sanitize_chunk(chunk) for chunk in chunks]
     print(f"Chunked {len(chunks)} records from {RECORDS_PATH}.")
 
     # Upsert in batches - a single call exceeds Pinecone's per-call record
