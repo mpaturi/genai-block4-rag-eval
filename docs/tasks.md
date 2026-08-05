@@ -181,7 +181,7 @@ still unmerged (stacked PR), or `main` if it already merged.
 - [x] Open PR7: base `phase-6-verify-docs` (or `main` if PR6 already
       merged) — opened by the user
 
-**PR7 review fixup (Leone):** the live API always used
+**PR7 review fixup (reviewer feedback):** the live API always used
 `DEFAULT_THRESHOLD` regardless of which filter was active, so a
 condition/drug filter never got the permissive threshold Run 6 showed
 was safe specifically for those two filter types.
