@@ -153,14 +153,15 @@ def test_over_length_question_returns_422():
 
 
 def test_over_length_condition_returns_422():
-    # Phase 11: condition is capped at max_length=100 - a Pinecone metadata
-    # filter value only, not something that reaches generate_answer's
-    # prompt (see QueryRequest in scripts/api.py). A valid question is
-    # included so the oversized condition is the only thing that should
-    # trigger this 422.
+    # Phase 11: condition is capped at max_length=200 (widened to match
+    # genai-block8-capstone's own QueryRequest bound) - a Pinecone
+    # metadata filter value only, not something that reaches
+    # generate_answer's prompt (see QueryRequest in scripts/api.py). A
+    # valid question is included so the oversized condition is the only
+    # thing that should trigger this 422.
     response = client.post(
         "/query",
-        json={"question": "Which patients have asthma?", "condition": "a" * 101},
+        json={"question": "Which patients have asthma?", "condition": "a" * 201},
     )
 
     assert response.status_code == 422
@@ -180,17 +181,18 @@ def test_over_length_drug_returns_422():
 
 
 def test_over_length_lab_returns_422():
-    # Phase 11: lab is capped at max_length=20, not 100 like
-    # condition/drug - its whitelist entries (SBP/BMI/Glucose/HbA1c) top
-    # out at 7 chars. comparison and value are included, both otherwise
-    # valid, so the oversized lab value is the only thing that should
-    # trigger this 422 - not the separate lab/comparison/value
+    # Phase 11: lab is capped at max_length=100 (widened to match
+    # genai-block8-capstone's own QueryRequest bound, same as
+    # condition/drug now) - its whitelist entries (SBP/BMI/Glucose/HbA1c)
+    # top out at 7 chars. comparison and value are included, both
+    # otherwise valid, so the oversized lab value is the only thing that
+    # should trigger this 422 - not the separate lab/comparison/value
     # all-or-nothing validator.
     response = client.post(
         "/query",
         json={
             "question": "Which patients have high blood pressure?",
-            "lab": "a" * 21,
+            "lab": "a" * 101,
             "comparison": "above",
             "value": 140,
         },

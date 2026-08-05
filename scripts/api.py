@@ -56,12 +56,21 @@ class QueryRequest(BaseModel):
     # against fixed whitelists before any Pinecone call. The max_length
     # caps here are not a prompt-injection defense; they just keep
     # obviously-invalid oversized values from propagating past the API
-    # boundary at all. 100 comfortably covers real values (longest
-    # observed condition/drug name in data/raw/graph_export.jsonl is 25/19
-    # chars); lab's whitelist entries (SBP/BMI/Glucose/HbA1c) top out at 7.
-    condition: str | None = Field(default=None, max_length=100)
+    # boundary at all.
+    #
+    # condition=200, lab=100 (widened from an initial 100/20): these now
+    # match genai-block8-capstone/app/api.py's own QueryRequest bounds
+    # exactly (condition=200, lab=100, drug_a/drug_b=100). Block 8 is the
+    # real external entry point that calls this API - its own validation
+    # runs first, so Block 4's internal caps must be at least as permissive
+    # as Block 8's outer bounds, or a request Block 8 already accepted
+    # could still hit a confusing 422 several layers downstream, here.
+    # Still comfortably covers real values (longest observed condition/
+    # drug name in data/raw/graph_export.jsonl is 25/19 chars) - widening
+    # to match Block 8 costs nothing in practice.
+    condition: str | None = Field(default=None, max_length=200)
     drug: str | None = Field(default=None, max_length=100)
-    lab: str | None = Field(default=None, max_length=20)
+    lab: str | None = Field(default=None, max_length=100)
     comparison: Literal["above", "below"] | None = None
     value: float | None = None
     gender: Literal["M", "F"] | None = None

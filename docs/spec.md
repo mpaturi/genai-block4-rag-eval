@@ -537,13 +537,19 @@ called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.
 
 **Field length limits (Phase 11):** `question` (max 500 chars), `condition`
-(max 100), `drug` (max 100), and `lab` (max 20) are all capped; an
+(max 200), `drug` (max 100), and `lab` (max 100) are all capped; an
 over-length value returns HTTP 422. `question` is the one field that
 actually reaches `generate_answer`'s prompt, so its cap is the genuinely
 prompt-injection-relevant one; `condition`/`drug`/`lab` only ever become
 Pinecone metadata filter values (validated against fixed whitelists in
 `build_metadata_filter()`) and are capped just to keep obviously-invalid
-oversized input from propagating past the API boundary.
+oversized input from propagating past the API boundary. `condition`/`lab`
+were widened from an initial 100/20 to exactly match
+`genai-block8-capstone/app/api.py`'s own `QueryRequest` bounds (200, 100,
+matching its `drug_a`/`drug_b` at 100 too) — Block 8 is this API's real
+external entry point, so Block 4's internal caps must be at least as
+permissive as Block 8's outer validation, or a request Block 8 already
+accepted could still hit a confusing 422 downstream here.
 
 **Phase 7 — optional metadata filters,** all `None`/absent by default (a
 request with none of these behaves exactly as before Phase 7):
