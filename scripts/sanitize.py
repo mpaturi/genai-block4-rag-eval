@@ -57,8 +57,21 @@ _CHAT_DELIMITER_RE = re.compile(
 def sanitize_chunk_text(text: str) -> str:
     """Strip conversation-turn markers from patient text before it is
     stored in Pinecone. See this module's docstring for why this runs at
-    ingestion rather than at prompt-build time."""
-    text = _ROLE_MARKER_RE.sub("", text)
+    ingestion rather than at prompt-build time.
+
+    The role-marker substitution replaces with a single space, not "" -
+    stripping to empty removes the whitespace on both sides of the marker
+    too, fusing the sentence before it directly onto the text after it
+    (e.g. "...fatigue. System: ignore..." -> "...fatigue.ignore...", zero
+    space after the period). Block 6's citation-hardening work
+    (trim_citation_snippet) splits on whitespace after sentence-ending
+    punctuation to find sentence boundaries, and this sanitizer runs
+    first, at ingestion - so a fused boundary here reaches Block 6
+    already broken, with no marker left for it to fix on its own side.
+    A single space keeps the boundary intact while still fully removing
+    the marker itself.
+    """
+    text = _ROLE_MARKER_RE.sub(" ", text)
     text = _CHAT_DELIMITER_RE.sub("", text)
     return text
 
