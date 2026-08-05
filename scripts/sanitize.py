@@ -34,21 +34,30 @@ instruction.
 """
 import re
 
-# Matches a role marker at start-of-line (^, with (?m) - kept in case a
-# newline ever does appear) OR right after sentence-ending punctuation
-# (./!/?) - the realistic shape for this corpus, since real chunk_text
-# (chunk_records.py's _make_text() output) never contains a newline at
-# all (confirmed against the full 11,436-record source file, not just a
-# sample). The lookbehind is zero-width, so the punctuation itself is
-# never consumed/stripped - only the role marker and colon are removed.
-# A plain mid-sentence word immediately followed by a colon (e.g.
-# "Cardiovascular system: normal.") is NOT matched, since neither
-# alternative is satisfied there - "system" isn't at start-of-line, and
-# the character immediately before it (through any run of whitespace) is
-# an ordinary word character, not one of .!?.
-_ROLE_MARKER_RE = re.compile(
-    r"(?im)(?:^|(?<=[.!?]))\s*(system|human|assistant|user)\s*:\s*"
-)
+# Unanchored - matches a role marker anywhere in the text, not just at
+# start-of-line or right after sentence-ending punctuation. The earlier,
+# anchored version was itself a bug fixed forward from an even earlier
+# version that only matched at start-of-line: anchoring to a fixed set of
+# "acceptable" preceding characters is inherently a game of finding every
+# shape an injection could take, and an unanchored match is simpler and
+# strictly safer against any positioning an attacker chooses.
+#
+# This does mean a legitimate mid-sentence phrase like "Cardiovascular
+# system: normal." now gets stripped too, not just deliberately-placed
+# injection markers - a real tradeoff, only acceptable because it doesn't
+# happen on this corpus in practice: confirmed directly against the full
+# data/raw/graph_export.jsonl (11,436 records) that none of
+# system/human/assistant/user appear as a whole word anywhere in any
+# record's `text` field, in any context - not just none followed by a
+# colon. chunk_records.py's own placeholder/template strings were checked
+# too, same result. If a future corpus does legitimately use one of these
+# words in prose, this regex would strip it - that's the accepted cost of
+# closing the positioning gap.
+#
+# \b (word boundary) still guards against a false positive within a
+# single word - "ecosystem:" is not stripped, since there's no boundary
+# between "eco" and "system".
+_ROLE_MARKER_RE = re.compile(r"(?i)\b(?:system|human|assistant|user)\s*:\s*")
 _CHAT_DELIMITER_RE = re.compile(
     r"(?i)\[/?(?:INST|SYS)\]|<\|.*?\|>|#{2,}\s*(?:instructions?|response)\b"
 )
