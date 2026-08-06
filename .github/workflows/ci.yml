@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch: 
 
 jobs:
   # Plain install-and-pytest - no service containers or secrets needed.
