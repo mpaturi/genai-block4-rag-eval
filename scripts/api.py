@@ -15,9 +15,10 @@ direct execution used elsewhere.
 import logging
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from scripts.generate import generate_answer
 from scripts.retrieve import (
@@ -37,16 +38,84 @@ FALLBACK_ANSWER = (
 )
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Overrides FastAPI's default RequestValidationError handler, which
+    # embeds each error's raw rejected value under an `input` key and
+    # re-encodes it as JSON. Starlette's JSONResponse.render() calls
+    # json.dumps(..., allow_nan=False) - so a non-finite float rejected by
+    # a ge/le bound (e.g. value: Infinity, hitting the ge=0/le=10_000
+    # bound on QueryRequest.value above) crashes at that render step with
+    # a raw, undocumented 500, even though validation itself worked
+    # correctly and rejected the value as intended. Confirmed live:
+    # {"value": Infinity} 500s with FastAPI's default handler, 422s
+    # cleanly with this one.
+    #
+    # str(exc) safely stringifies the whole error list as plain text
+    # instead of re-encoding the rejected value as JSON, so nothing
+    # non-finite ever reaches json.dumps again. This also gives every 422
+    # from request validation the same {"error", "detail"} shape the
+    # RAGFilterError handler below already uses, instead of FastAPI's own
+    # default list-of-dicts format - one consistent 422 shape across this
+    # file rather than two.
+    return JSONResponse(
+        status_code=422,
+        content={"error": "Invalid request.", "detail": str(exc)},
+    )
+
+
 class QueryRequest(BaseModel):
-    question: str
+    # max_length=500 - this is the field that actually reaches an LLM
+    # prompt (generate_answer(), called unconditionally from /query below),
+    # so it's the one genuinely prompt-injection-relevant field here. 500
+    # is generous for a natural-language clinical question (the real
+    # eval set in data/eval/questions.json tops out at 98 chars) while
+    # still bounding how much attacker-controlled text a single request
+    # can push toward Claude.
+    question: str = Field(max_length=500)
     top_k: int = 20
     # Phase 7 - optional structured metadata filters, all None by default
     # so a request using none of them behaves exactly as before Phase 7.
-    condition: str | None = None
-    drug: str | None = None
-    lab: str | None = None
+    #
+    # condition/drug/lab below are never seen by generate_answer's prompt -
+    # they're only used to build a Pinecone metadata filter
+    # (build_metadata_filter() in retrieve.py) and are validated there
+    # against fixed whitelists before any Pinecone call. The max_length
+    # caps here are not a prompt-injection defense; they just keep
+    # obviously-invalid oversized values from propagating past the API
+    # boundary at all.
+    #
+    # condition=200, lab=100 (widened from an initial 100/20): these now
+    # match genai-block8-capstone/app/api.py's own QueryRequest bounds
+    # exactly (condition=200, lab=100, drug_a/drug_b=100). Block 8 is the
+    # real external entry point that calls this API - its own validation
+    # runs first, so Block 4's internal caps must be at least as permissive
+    # as Block 8's outer bounds, or a request Block 8 already accepted
+    # could still hit a confusing 422 several layers downstream, here.
+    # Still comfortably covers real values (longest observed condition/
+    # drug name in data/raw/graph_export.jsonl is 25/19 chars) - widening
+    # to match Block 8 costs nothing in practice.
+    condition: str | None = Field(default=None, max_length=200)
+    drug: str | None = Field(default=None, max_length=100)
+    lab: str | None = Field(default=None, max_length=100)
     comparison: Literal["above", "below"] | None = None
-    value: float | None = None
+    # ge=0, le=10_000: matches genai-block5-agent's QuestionInput.value and
+    # genai-block8-capstone's QueryRequest.value exactly. ge=0 - every lab
+    # this system knows (_LAB_PROPERTY in retrieve.py) is a non-negative
+    # measurement, so a negative value can never match a real patient.
+    # le=10_000 - comfortably above any real unit in use (HbA1c tops out
+    # near 20, systolic BP near 300, glucose in the low thousands mg/dL at
+    # the extreme), while still rejecting a deliberately absurd or
+    # non-finite float (inf/-inf/nan) before it reaches a Pinecone filter.
+    #
+    # This closes a fail-mode gap, not a crash risk: the /query handler's
+    # broad `except Exception` below already catches whatever an absurd
+    # value could do downstream, so nothing here was ever going to crash
+    # the server. Without this bound, though, an absurd value would fall
+    # through to that generic 502 (or silently build a degenerate Pinecone
+    # filter, e.g. `{"$gt": float("-inf")}`) instead of the fast, clear
+    # 422 every other invalid input in this file gets.
+    value: float | None = Field(default=None, ge=0, le=10_000)
     gender: Literal["M", "F"] | None = None
     birth_decade: int | None = None
 

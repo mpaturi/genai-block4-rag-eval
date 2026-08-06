@@ -140,6 +140,147 @@ def test_pinecone_timeout_returns_502_not_a_hang(monkeypatch):
     assert response.json()["detail"] == "PineconeTimeoutError"
 
 
+def test_over_length_question_returns_422():
+    # Phase 11: question is capped at max_length=500 - the field that
+    # actually reaches generate_answer's prompt (see QueryRequest in
+    # scripts/api.py). One character over the cap must be rejected before
+    # Pinecone or Claude is ever called.
+    response = client.post(
+        "/query", json={"question": "a" * 501}
+    )
+
+    assert response.status_code == 422
+
+
+def test_over_length_condition_returns_422():
+    # Phase 11: condition is capped at max_length=200 (widened to match
+    # genai-block8-capstone's own QueryRequest bound) - a Pinecone
+    # metadata filter value only, not something that reaches
+    # generate_answer's prompt (see QueryRequest in scripts/api.py). A
+    # valid question is included so the oversized condition is the only
+    # thing that should trigger this 422.
+    response = client.post(
+        "/query",
+        json={"question": "Which patients have asthma?", "condition": "a" * 201},
+    )
+
+    assert response.status_code == 422
+
+
+def test_over_length_drug_returns_422():
+    # Phase 11: drug is capped at max_length=100 - same reasoning as
+    # condition above, a Pinecone metadata filter value only. A valid
+    # question is included so the oversized drug is the only thing that
+    # should trigger this 422.
+    response = client.post(
+        "/query",
+        json={"question": "Which patients have asthma?", "drug": "a" * 101},
+    )
+
+    assert response.status_code == 422
+
+
+def test_over_length_lab_returns_422():
+    # Phase 11: lab is capped at max_length=100 (widened to match
+    # genai-block8-capstone's own QueryRequest bound, same as
+    # condition/drug now) - its whitelist entries (SBP/BMI/Glucose/HbA1c)
+    # top out at 7 chars. comparison and value are included, both
+    # otherwise valid, so the oversized lab value is the only thing that
+    # should trigger this 422 - not the separate lab/comparison/value
+    # all-or-nothing validator.
+    response = client.post(
+        "/query",
+        json={
+            "question": "Which patients have high blood pressure?",
+            "lab": "a" * 101,
+            "comparison": "above",
+            "value": 140,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_value_negative_returns_422():
+    # Phase 11: value is bounded to [0, 10_000] (ge=0/le=10_000) - a
+    # negative value can never match a real patient (see QueryRequest in
+    # scripts/api.py). lab/comparison are included and valid so the
+    # negative value is the only thing that should trigger this 422.
+    response = client.post(
+        "/query",
+        json={
+            "question": "Which patients have high blood pressure?",
+            "lab": "SBP",
+            "comparison": "above",
+            "value": -1,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_value_above_ten_thousand_returns_422():
+    # Same bound, upper end - 10_001 is comfortably above any real lab
+    # unit in use (see the ge=0/le=10_000 comment on QueryRequest.value).
+    response = client.post(
+        "/query",
+        json={
+            "question": "Which patients have high blood pressure?",
+            "lab": "SBP",
+            "comparison": "above",
+            "value": 10_001,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_value_infinity_returns_422():
+    # Non-finite floats must be rejected the same as any other
+    # out-of-range value. Constructed as raw JSON bytes, not via
+    # client.post(json=...): httpx's json= encoding calls
+    # json.dumps(..., allow_nan=False) and raises before the request is
+    # even sent when given float("inf") - confirmed directly. The literal
+    # `Infinity` token in raw JSON bytes is accepted by Python's own json
+    # parser (used server-side) by default, so this is the way to
+    # actually get a non-finite value into the request.
+    #
+    # Also confirmed directly: without scripts/api.py's custom
+    # RequestValidationError handler (added alongside this test), this
+    # 500s instead of 422ing - FastAPI's default handler embeds the
+    # rejected `inf` value in the error body and re-encodes it as JSON,
+    # and Starlette's JSONResponse.render() explicitly disallows
+    # non-finite floats (allow_nan=False), crashing at render time even
+    # though the ge/le bound itself correctly rejected the value. The
+    # custom handler avoids this by stringifying the error instead of
+    # re-encoding the raw rejected value.
+    body = (
+        b'{"question": "Which patients have high blood pressure?", '
+        b'"lab": "SBP", "comparison": "above", "value": Infinity}'
+    )
+    response = client.post(
+        "/query", content=body, headers={"Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_value_nan_returns_422():
+    # Same construction and reasoning as test_value_infinity_returns_422
+    # above - httpx's json= would reject float("nan") before sending, and
+    # without the custom RequestValidationError handler this would 500
+    # rather than 422 for the same JSON-render reason.
+    body = (
+        b'{"question": "Which patients have high blood pressure?", '
+        b'"lab": "SBP", "comparison": "above", "value": NaN}'
+    )
+    response = client.post(
+        "/query", content=body, headers={"Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 422
+
+
 def test_claude_timeout_returns_502_not_a_hang(monkeypatch):
     monkeypatch.setattr("scripts.api.retrieve", lambda *args, **kwargs: [FAKE_CHUNK])
 

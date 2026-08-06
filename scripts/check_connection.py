@@ -39,6 +39,46 @@ def check_pinecone() -> bool:
         return False
 
 
+def check_pinecone_query_key() -> bool:
+    """Confirm PINECONE_QUERY_API_KEY is set and can authenticate. This is
+    the separate, narrowly-scoped key (DataPlaneViewer, query only - see
+    docs/spec.md's Key scoping note) that retrieve.py/the live API use,
+    distinct from PINECONE_API_KEY's full access. Unlike check_pinecone()
+    above, this key cannot call list_indexes() (a control-plane operation
+    outside its scope), so it makes a lightweight data-plane call instead
+    - describe_index_stats() against the configured index - which is
+    exactly the kind of call retrieve.py itself makes at query time."""
+    api_key = os.environ.get("PINECONE_QUERY_API_KEY")
+    index_name = os.environ.get("PINECONE_INDEX_NAME")
+    if not api_key:
+        print("[Pinecone query key] FAIL - PINECONE_QUERY_API_KEY not set in .env")
+        return False
+    if not index_name:
+        # check_index_name() below already reports a missing index name on
+        # its own - nothing further to check here without one
+        print("[Pinecone query key] FAIL - PINECONE_INDEX_NAME not set in .env")
+        return False
+
+    from pinecone import Pinecone
+    from pinecone.exceptions import NotFoundException, UnauthorizedException
+
+    try:
+        pc = Pinecone(api_key=api_key)
+        index = pc.Index(name=index_name)
+        index.describe_index_stats()
+        print("[Pinecone query key] OK - authenticated and reachable")
+        return True
+    except UnauthorizedException as e:
+        print(f"[Pinecone query key] FAIL - invalid or under-scoped API key: {e}")
+        return False
+    except NotFoundException as e:
+        print(f"[Pinecone query key] FAIL - index '{index_name}' not found: {e}")
+        return False
+    except Exception as e:
+        print(f"[Pinecone query key] FAIL - network/connection error: {e}")
+        return False
+
+
 def check_index_name() -> bool:
     """Confirm PINECONE_INDEX_NAME is set - a missing index name wouldn't
     fail here otherwise, but would fail one step later in create_index.py,
@@ -81,10 +121,11 @@ def check_anthropic() -> bool:
 def main() -> int:
     """Run all checks and report a combined pass/fail result."""
     pinecone_ok = check_pinecone()
+    pinecone_query_ok = check_pinecone_query_key()
     index_name_ok = check_index_name()
     anthropic_ok = check_anthropic()
 
-    if pinecone_ok and index_name_ok and anthropic_ok:
+    if pinecone_ok and pinecone_query_ok and index_name_ok and anthropic_ok:
         print("\nAll connections OK.")
         return 0
 

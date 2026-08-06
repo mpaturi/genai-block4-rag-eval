@@ -212,13 +212,22 @@ variables:
 
 | Variable | Purpose |
 |---|---|
-| `PINECONE_API_KEY` | Pinecone authentication |
+| `PINECONE_API_KEY` | Full-access Pinecone authentication — `create_index.py`, `ingest.py`, `verify.py` |
+| `PINECONE_QUERY_API_KEY` | Scoped Pinecone authentication (DataPlaneViewer, query only) — `retrieve.py`, i.e. the live query path exposed via `POST /query` |
 | `PINECONE_INDEX_NAME` | Name of the integrated-inference index this project creates |
 | `ANTHROPIC_API_KEY` | Claude API authentication |
 
 All scripts load credentials via `python-dotenv`. No credentials are ever
 hardcoded or logged. `scripts/check_connection.py` is the first thing run
 after setup, so a bad key is caught immediately instead of mid-ingestion.
+
+**Key scoping (Phase 11):** the query path (`retrieve.py`, and therefore
+`POST /query`) uses a separate Pinecone API key scoped to DataPlaneViewer,
+query-only access, rather than the same full-access key the offline
+ingestion/admin scripts use. The live API is the one thing external
+callers (Block 5) actually reach; scoping its key means a compromise of
+that path cannot write or delete index data, even though the credential
+that reaches it is the one most exposed to untrusted input.
 
 ## Chunking design
 
@@ -262,6 +271,16 @@ after setup, so a bad key is caught immediately instead of mid-ingestion.
   `_id` specifically (not `id`) to recognize it as the record identifier.
   Guarantees uniqueness and makes it obvious which patient a chunk belongs
   to just from the ID.
+- **Sanitization (Phase 11):** `scripts/sanitize.py`'s
+  `sanitize_chunk_text()`, called from `ingest.py` before upsert, strips
+  conversation-turn markers (`System:`/`Human:`/`Assistant:`/`User:`
+  prefixes, chat-template delimiter tokens) from `chunk_text`.
+  `chunk_text` flows verbatim into `generate.py`'s LLM prompt and into
+  `/query`'s `sources[].chunk_text` citation field — sanitizing once at
+  ingestion, the single point every chunk is written to Pinecone, covers
+  both readers from one place, rather than only covering the prompt if it
+  were done in `generate.py` instead. See `scripts/sanitize.py`'s module
+  docstring for the full reasoning.
 - Every chunk carries the parent patient's full metadata (`person_id`,
   `gender`, `year_of_birth_band`, `condition_count`, `drug_count`,
   `visit_count`, `latest_sbp`, `latest_bmi`, `latest_glucose`,
@@ -516,6 +535,21 @@ in the same request — 20 unfiltered, 25 filtered (`FILTERED_TOP_K_CEILING`)
 — out-of-range or invalid values return HTTP 422 before Pinecone is ever
 called. An empty or whitespace-only `question` also returns HTTP 422,
 same as an invalid `top_k`.
+
+**Field length limits (Phase 11):** `question` (max 500 chars), `condition`
+(max 200), `drug` (max 100), and `lab` (max 100) are all capped; an
+over-length value returns HTTP 422. `question` is the one field that
+actually reaches `generate_answer`'s prompt, so its cap is the genuinely
+prompt-injection-relevant one; `condition`/`drug`/`lab` only ever become
+Pinecone metadata filter values (validated against fixed whitelists in
+`build_metadata_filter()`) and are capped just to keep obviously-invalid
+oversized input from propagating past the API boundary. `condition`/`lab`
+were widened from an initial 100/20 to exactly match
+`genai-block8-capstone/app/api.py`'s own `QueryRequest` bounds (200, 100,
+matching its `drug_a`/`drug_b` at 100 too) — Block 8 is this API's real
+external entry point, so Block 4's internal caps must be at least as
+permissive as Block 8's outer validation, or a request Block 8 already
+accepted could still hit a confusing 422 downstream here.
 
 **Phase 7 — optional metadata filters,** all `None`/absent by default (a
 request with none of these behaves exactly as before Phase 7):

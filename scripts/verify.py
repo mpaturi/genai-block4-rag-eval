@@ -17,7 +17,12 @@ from dotenv import load_dotenv
 from pinecone import Pinecone
 from pinecone.exceptions import NotFoundException
 
-from check_connection import check_anthropic, check_index_name, check_pinecone
+from check_connection import (
+    check_anthropic,
+    check_index_name,
+    check_pinecone,
+    check_pinecone_query_key,
+)
 from chunk_records import chunk_all_records
 from ingest import NAMESPACE, RECORDS_PATH
 from ingest import main as run_ingest
@@ -59,8 +64,16 @@ def poll_for_count(index, expected: int) -> int:
 
 def check_credentials() -> bool:
     """Reuses check_connection.py's own checks rather than re-implementing
-    auth validation a second time."""
-    return check_pinecone() and check_index_name() and check_anthropic()
+    auth validation a second time. Includes check_pinecone_query_key() -
+    the query-scoped key retrieve.py actually uses at query time - so this
+    check doesn't silently stop covering that path now that it's split
+    from PINECONE_API_KEY."""
+    return (
+        check_pinecone()
+        and check_pinecone_query_key()
+        and check_index_name()
+        and check_anthropic()
+    )
 
 
 def check_index_reachable(index_name: str) -> bool:

@@ -183,10 +183,16 @@ def _get_index():
     """
     global _index
     if _index is None:
-        api_key = os.environ.get("PINECONE_API_KEY")
+        # retrieve.py is the only script on the query path (the others -
+        # create_index.py, ingest.py, verify.py - all need full read/write
+        # access to manage the index). It reads a separate,
+        # narrowly-scoped key (DataPlaneViewer, query only) so a
+        # compromise of the query path - the one this API exposes to
+        # external callers - cannot write or delete index data.
+        api_key = os.environ.get("PINECONE_QUERY_API_KEY")
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not api_key:
-            raise RuntimeError("PINECONE_API_KEY not set in .env")
+            raise RuntimeError("PINECONE_QUERY_API_KEY not set in .env")
         if not index_name:
             raise RuntimeError("PINECONE_INDEX_NAME not set in .env")
 
