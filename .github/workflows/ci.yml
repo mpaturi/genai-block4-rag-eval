@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Plain install-and-pytest - no service containers or secrets needed.
+  # Confirmed against the full test suite (tests/test_pinecone_key_scope.py
+  # is the only file that touches live Pinecone, and it self-skips via its
+  # own pytest.mark.skipif when PINECONE_QUERY_API_KEY/PINECONE_INDEX_NAME
+  # aren't set - everything else is pure logic or mocks retrieve()/
+  # generate_answer() directly). Verified locally first in a genuinely
+  # clean venv (pip install -r requirements.txt only, no local .venv
+  # carried over) with .env moved aside, matching what this job actually
+  # does, before adding this file.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest
